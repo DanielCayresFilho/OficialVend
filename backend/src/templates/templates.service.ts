@@ -1,0 +1,555 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PrismaService } from '../prisma.service';
+import { CreateTemplateDto } from './dto/create-template.dto';
+import { UpdateTemplateDto } from './dto/update-template.dto';
+import { SendTemplateDto, SendTemplateMassiveDto, TemplateVariableDto } from './dto/send-template.dto';
+import { WhatsappCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
+import axios from 'axios';
+
+@Injectable()
+export class TemplatesService {
+  constructor(
+    private prisma: PrismaService,
+    private whatsappCloudService: WhatsappCloudService,
+  ) {}
+
+  async create(createTemplateDto: CreateTemplateDto) {
+    // Se um segmento foi fornecido, verificar se existe
+    if (createTemplateDto.segmentId) {
+      const segment = await this.prisma.segment.findUnique({
+        where: { id: createTemplateDto.segmentId },
+      });
+
+      if (!segment) {
+        throw new NotFoundException(`Segmento com ID ${createTemplateDto.segmentId} não encontrado`);
+      }
+    }
+
+    // Serializar arrays para JSON
+    const buttons = createTemplateDto.buttons ? JSON.stringify(createTemplateDto.buttons) : null;
+    const variables = createTemplateDto.variables ? JSON.stringify(createTemplateDto.variables) : null;
+
+    return this.prisma.template.create({
+      data: {
+        name: createTemplateDto.name,
+        language: createTemplateDto.language || 'pt_BR',
+        category: createTemplateDto.category || 'MARKETING',
+        segmentId: createTemplateDto.segmentId || null,  // null = global
+        lineId: createTemplateDto.lineId || null,  // Mantido para compatibilidade
+        namespace: createTemplateDto.namespace,
+        headerType: createTemplateDto.headerType,
+        headerContent: createTemplateDto.headerContent,
+        bodyText: createTemplateDto.bodyText,
+        footerText: createTemplateDto.footerText,
+        buttons,
+        variables,
+        status: 'APPROVED',  // Templates internos já vêm aprovados
+      },
+    });
+  }
+
+  async findAll(filters?: any) {
+    const { search, lineId, segmentId, status, ...validFilters } = filters || {};
+
+    const where: any = { ...validFilters };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { bodyText: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (lineId) {
+      where.lineId = parseInt(lineId);
+    }
+
+    if (segmentId) {
+      where.segmentId = parseInt(segmentId);
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    const templates = await this.prisma.template.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Parse JSON fields
+    return templates.map(template => ({
+      ...template,
+      buttons: template.buttons ? JSON.parse(template.buttons) : null,
+      variables: template.variables ? JSON.parse(template.variables) : null,
+    }));
+  }
+
+  async findBySegment(segmentId: number) {
+    // Retornar templates do segmento específico + templates globais (segmentId = null)
+    const templates = await this.prisma.template.findMany({
+      where: {
+        OR: [
+          { segmentId },
+          { segmentId: null },  // Templates globais
+        ],
+        status: 'APPROVED',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return templates.map(template => ({
+      ...template,
+      buttons: template.buttons ? JSON.parse(template.buttons) : null,
+      variables: template.variables ? JSON.parse(template.variables) : null,
+    }));
+  }
+
+  async findOne(id: number) {
+    const template = await this.prisma.template.findUnique({
+      where: { id },
+    });
+
+    if (!template) {
+      throw new NotFoundException(`Template com ID ${id} não encontrado`);
+    }
+
+    return {
+      ...template,
+      buttons: template.buttons ? JSON.parse(template.buttons) : null,
+      variables: template.variables ? JSON.parse(template.variables) : null,
+    };
+  }
+
+  async findByLine(lineId: number) {
+    const templates = await this.prisma.template.findMany({
+      where: { lineId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return templates.map(template => ({
+      ...template,
+      buttons: template.buttons ? JSON.parse(template.buttons) : null,
+      variables: template.variables ? JSON.parse(template.variables) : null,
+    }));
+  }
+
+  async update(id: number, updateTemplateDto: UpdateTemplateDto) {
+    await this.findOne(id);
+
+    const data: any = { ...updateTemplateDto };
+
+    if (updateTemplateDto.buttons) {
+      data.buttons = JSON.stringify(updateTemplateDto.buttons);
+    }
+
+    if (updateTemplateDto.variables) {
+      data.variables = JSON.stringify(updateTemplateDto.variables);
+    }
+
+    const updated = await this.prisma.template.update({
+      where: { id },
+      data,
+    });
+
+    return {
+      ...updated,
+      buttons: updated.buttons ? JSON.parse(updated.buttons) : null,
+      variables: updated.variables ? JSON.parse(updated.variables) : null,
+    };
+  }
+
+  async remove(id: number) {
+    await this.findOne(id);
+
+    return this.prisma.template.delete({
+      where: { id },
+    });
+  }
+
+  /**
+   * Sincroniza template com WhatsApp Cloud API
+   */
+  async syncWithCloudApi(id: number) {
+    const template = await this.findOne(id);
+    const line = await this.prisma.linesStock.findUnique({
+      where: { id: template.lineId },
+    });
+
+    if (!line || !line.oficial) {
+      throw new BadRequestException('Linha não é oficial ou não encontrada');
+    }
+
+    // Buscar o App para obter o accessToken e wabaId
+    const app = await this.prisma.app.findUnique({
+      where: { id: line.appId },
+    });
+
+    if (!app || !app.accessToken || !app.wabaId) {
+      throw new BadRequestException('Linha não possui app, accessToken ou wabaId configurados');
+    }
+
+    try {
+      // Montar componentes do template
+      const components: any[] = [];
+
+      // Header
+      if (template.headerType && template.headerContent) {
+        components.push({
+          type: 'HEADER',
+          format: template.headerType,
+          text: template.headerType === 'TEXT' ? template.headerContent : undefined,
+          example: template.headerType !== 'TEXT' ? { header_handle: [template.headerContent] } : undefined,
+        });
+      }
+
+      // Body
+      const bodyComponent: any = {
+        type: 'BODY',
+        text: template.bodyText,
+      };
+
+      if (template.variables && template.variables.length > 0) {
+        bodyComponent.example = {
+          body_text: [template.variables],
+        };
+      }
+      components.push(bodyComponent);
+
+      // Footer
+      if (template.footerText) {
+        components.push({
+          type: 'FOOTER',
+          text: template.footerText,
+        });
+      }
+
+      // Buttons
+      if (template.buttons && template.buttons.length > 0) {
+        components.push({
+          type: 'BUTTONS',
+          buttons: template.buttons.map((btn: any) => ({
+            type: btn.type,
+            text: btn.text,
+            url: btn.url,
+            phone_number: btn.phoneNumber,
+          })),
+        });
+      }
+
+      // Enviar para Cloud API
+      const response = await axios.post(
+        `https://graph.facebook.com/v18.0/${app.wabaId}/message_templates`,
+        {
+          name: template.name,
+          language: template.language,
+          category: template.category,
+          components,
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${app.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      // Atualizar status do template
+      await this.prisma.template.update({
+        where: { id },
+        data: {
+          status: 'SUBMITTED',
+          namespace: response.data.id,
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Template enviado para aprovação',
+        templateId: response.data.id,
+      };
+    } catch (error) {
+      console.error('Erro ao sincronizar template:', error.response?.data || error.message);
+      
+      await this.prisma.template.update({
+        where: { id },
+        data: { status: 'REJECTED' },
+      });
+
+      throw new BadRequestException(
+        `Erro ao sincronizar template: ${error.response?.data?.error?.message || error.message}`
+      );
+    }
+  }
+
+  /**
+   * Envia template para um contato (1x1)
+   */
+  async sendTemplate(dto: SendTemplateDto) {
+    const template = await this.findOne(dto.templateId);
+    
+    // Usar lineId do DTO ou do template
+    const lineId = dto.lineId || template.lineId;
+    
+    const line = await this.prisma.linesStock.findUnique({
+      where: { id: lineId },
+    });
+
+    if (!line) {
+      throw new NotFoundException(`Linha com ID ${lineId} não encontrada`);
+    }
+
+    // Verificar blocklist
+    const isBlocked = await this.prisma.blockList.findFirst({
+      where: { phone: dto.phone },
+    });
+
+    if (isBlocked) {
+      throw new BadRequestException('Número está na lista de bloqueio');
+    }
+
+    // Preparar variáveis
+    const variables = dto.variables || [];
+
+    // Buscar o App para obter o accessToken
+    const app = await this.prisma.app.findUnique({
+      where: { id: line.appId },
+    });
+
+    if (!app || !app.accessToken || !line.numberId) {
+      throw new BadRequestException('Linha não possui app ou accessToken configurados');
+    }
+
+    const result = await this.sendViaCloudApi(line, app, template, dto.phone, variables);
+
+    // Criar registro de envio
+    const templateMessage = await this.prisma.templateMessage.create({
+      data: {
+        templateId: dto.templateId,
+        contactPhone: dto.phone,
+        contactName: dto.contactName,
+        lineId,
+        status: result.success ? 'SENT' : 'FAILED',
+        messageId: result.messageId,
+        variables: variables.length > 0 ? JSON.stringify(variables) : null,
+        errorMessage: result.error,
+      },
+    });
+
+    // Criar conversa se enviado com sucesso
+    if (result.success) {
+      // Substituir variáveis no texto
+      let messageText = template.bodyText;
+      variables.forEach((v: TemplateVariableDto, index: number) => {
+        messageText = messageText.replace(`{{${index + 1}}}`, v.value);
+        messageText = messageText.replace(`{{${v.key}}}`, v.value);
+      });
+
+      await this.prisma.conversation.create({
+        data: {
+          contactName: dto.contactName || 'Contato',
+          contactPhone: dto.phone,
+          message: `[TEMPLATE: ${template.name}] ${messageText}`,
+          sender: 'operator',
+          messageType: 'template',
+          userLine: lineId,
+        },
+      });
+    }
+
+    return {
+      success: result.success,
+      messageId: result.messageId,
+      templateMessageId: templateMessage.id,
+      error: result.error,
+    };
+  }
+
+  /**
+   * Envia template via WhatsApp Cloud API
+   */
+  private async sendViaCloudApi(
+    line: any,
+    app: any,
+    template: any,
+    phone: string,
+    variables: TemplateVariableDto[],
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      // Montar componentes com variáveis
+      const components: any[] = [];
+
+      // Header com variáveis
+      if (template.headerType === 'TEXT' && template.headerContent) {
+        const headerVars = variables.filter(v => v.key.startsWith('header'));
+        if (headerVars.length > 0) {
+          components.push({
+            type: 'header',
+            parameters: headerVars.map(v => ({
+              type: 'text',
+              text: v.value,
+            })),
+          });
+        }
+      }
+
+      // Body com variáveis
+      const bodyVars = variables.filter(v => !v.key.startsWith('header') && !v.key.startsWith('button'));
+      if (bodyVars.length > 0) {
+        components.push({
+          type: 'body',
+          parameters: bodyVars.map(v => ({
+            type: 'text',
+            text: v.value,
+          })),
+        });
+      }
+
+      // Buttons com variáveis
+      const buttonVars = variables.filter(v => v.key.startsWith('button'));
+      buttonVars.forEach((v, index) => {
+        components.push({
+          type: 'button',
+          sub_type: 'url',
+          index,
+          parameters: [{
+            type: 'text',
+            text: v.value,
+          }],
+        });
+      });
+
+      const response = await this.whatsappCloudService.sendTemplate({
+        phoneNumberId: line.numberId,
+        token: app.accessToken,
+        to: phone,
+        templateName: template.name,
+        language: template.language,
+        components: components.length > 0 ? components : undefined,
+      });
+
+      return {
+        success: true,
+        messageId: response.messages?.[0]?.id,
+      };
+    } catch (error: any) {
+      console.error('Erro ao enviar template via Cloud API:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.message,
+      };
+    }
+  }
+
+
+  /**
+   * Envia template para múltiplos contatos (massivo)
+   */
+  async sendTemplateMassive(dto: SendTemplateMassiveDto) {
+    const template = await this.findOne(dto.templateId);
+    const lineId = dto.lineId || template.lineId;
+
+    const results: Array<{
+      phone: string;
+      success: boolean;
+      messageId?: string;
+      error?: string;
+    }> = [];
+
+    for (const recipient of dto.recipients) {
+      try {
+        const result = await this.sendTemplate({
+          templateId: dto.templateId,
+          phone: recipient.phone,
+          contactName: recipient.contactName,
+          variables: recipient.variables,
+          lineId,
+        });
+
+        results.push({
+          phone: recipient.phone,
+          success: result.success,
+          messageId: result.messageId,
+          error: result.error,
+        });
+      } catch (error) {
+        results.push({
+          phone: recipient.phone,
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    return {
+      status: failed === 0 ? 'success' : successful === 0 ? 'error' : 'partial',
+      total: dto.recipients.length,
+      successful,
+      failed,
+      results,
+    };
+  }
+
+  /**
+   * Obtém histórico de envios de um template
+   */
+  async getTemplateHistory(templateId: number, filters?: any) {
+    const { startDate, endDate, status } = filters || {};
+
+    const where: any = { templateId };
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    return this.prisma.templateMessage.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Obtém estatísticas de um template
+   */
+  async getTemplateStats(templateId: number) {
+    const total = await this.prisma.templateMessage.count({
+      where: { templateId },
+    });
+
+    const sent = await this.prisma.templateMessage.count({
+      where: { templateId, status: 'SENT' },
+    });
+
+    const delivered = await this.prisma.templateMessage.count({
+      where: { templateId, status: 'DELIVERED' },
+    });
+
+    const read = await this.prisma.templateMessage.count({
+      where: { templateId, status: 'READ' },
+    });
+
+    const failed = await this.prisma.templateMessage.count({
+      where: { templateId, status: 'FAILED' },
+    });
+
+    return {
+      total,
+      sent,
+      delivered,
+      read,
+      failed,
+      deliveryRate: total > 0 ? ((delivered / total) * 100).toFixed(2) : '0',
+      readRate: delivered > 0 ? ((read / delivered) * 100).toFixed(2) : '0',
+    };
+  }
+}
+

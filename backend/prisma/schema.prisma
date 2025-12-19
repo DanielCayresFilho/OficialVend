@@ -1,0 +1,411 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Enums
+enum Role {
+  admin
+  operator
+  supervisor
+  ativador
+}
+
+enum Status {
+  Online
+  Offline
+}
+
+enum LineStatus {
+  active
+  ban
+}
+
+enum Sender {
+  operator
+  contact
+}
+
+enum Speed {
+  fast
+  medium
+  slow
+}
+
+// Models
+model User {
+  id             Int      @id @default(autoincrement())
+  name           String
+  email          String   @unique
+  password       String
+  role           Role
+  segment        Int?
+  line           Int? // Mantido para compatibilidade (deprecated - usar LineOperators)
+  status         Status   @default(Offline)
+  oneToOneActive Boolean  @default(true) // Se true, operador pode chamar clientes no 1x1
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lineOperators LineOperator[] // Relacionamento com linhas
+  createdLines  LinesStock[] // Linhas criadas por este usuário (para ativadores)
+
+  systemEvents SystemEvent[]
+
+  @@index([email])
+  @@index([segment])
+  @@index([line])
+  @@index([role, status])
+}
+
+model Segment {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+}
+
+model Tabulation {
+  id        Int      @id @default(autoincrement())
+  name      String
+  isCPC     Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+}
+
+model Contact {
+  id        Int       @id @default(autoincrement())
+  name      String
+  phone     String   @unique // Telefone único - não permite duplicados
+  segment   Int?
+  cpf       String?
+  contract  String?
+  isCPC     Boolean   @default(false) // Se true, contato foi marcado como CPC
+  lastCPCAt DateTime? // Última vez que foi marcado como CPC (para temporizador)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([phone])
+  @@index([cpf])
+  @@index([segment])
+  @@index([isCPC])
+}
+
+model Campaign {
+  id                Int       @id @default(autoincrement())
+  name              String
+  contactName       String
+  contactPhone      String
+  contactSegment    Int?
+  dateTime          DateTime  @default(now())
+  lineReceptor      Int?
+  response          Boolean   @default(false)
+  speed             Speed
+  retryCount        Int       @default(0)
+  useTemplate       Boolean   @default(false)
+  templateId        Int?
+  templateVariables String?   @db.Text
+  endTime           DateTime? // Horário limite para envio das mensagens
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([contactPhone])
+  @@index([contactSegment])
+  @@index([lineReceptor])
+  @@index([response])
+  @@index([dateTime])
+  @@index([templateId])
+  @@index([name])
+}
+
+model BlockList {
+  id        Int      @id @default(autoincrement())
+  name      String?
+  phone     String?
+  cpf       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone])
+  @@index([cpf])
+}
+
+// App Meta (WhatsApp Business App)
+model App {
+  id                 Int      @id @default(autoincrement())
+  name               String   @unique
+  accessToken        String // Token de acesso do WhatsApp Cloud API
+  appSecret          String? // App Secret para validação de assinatura do webhook
+  webhookVerifyToken String? // Token de verificação do webhook
+  wabaId             String? // WhatsApp Business Account ID (opcional)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([name])
+}
+
+model LinesStock {
+  id           Int        @id @default(autoincrement())
+  phone        String     @unique
+  lineStatus   LineStatus @default(active)
+  segment      Int?
+  linkedTo     Int? // Mantido para compatibilidade (deprecated - usar LineOperators)
+  oficial      Boolean    @default(true) // Todas as linhas são oficiais (Cloud API)
+  appId        Int // ID do App (credenciais vêm do App)
+  numberId     String // Phone Number ID (obrigatório)
+  receiveMedia Boolean    @default(false) // Se true, baixa mídia automaticamente
+  createdBy    Int? // ID do usuário que criou a linha (para rastrear produtividade dos ativadores)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  operators LineOperator[] // Relacionamento com operadores
+  creator   User?          @relation(fields: [createdBy], references: [id]) // Usuário que criou
+
+  @@index([phone])
+  @@index([lineStatus])
+  @@index([segment])
+  @@index([linkedTo])
+  @@index([numberId])
+  @@index([createdBy])
+  @@index([appId])
+}
+
+// Tabela de relacionamento entre Linhas e Operadores (máximo 2 operadores por linha)
+model LineOperator {
+  id        Int      @id @default(autoincrement())
+  lineId    Int
+  userId    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  line LinesStock @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, userId])
+  @@index([lineId])
+  @@index([userId])
+}
+
+model Conversation {
+  id           Int       @id @default(autoincrement())
+  contactName  String
+  contactPhone String
+  segment      Int?
+  userName     String?
+  userLine     Int? // ID da linha (mantido para compatibilidade)
+  userId       Int? // ID do operador específico que está atendendo
+  message      String    @db.Text
+  sender       Sender
+  datetime     DateTime  @default(now())
+  tabulation   Int?
+  messageType  String    @default("text")
+  mediaUrl     String?
+  archived     Boolean   @default(false) // Se true, conversa foi arquivada
+  archivedAt   DateTime? // Data de arquivamento
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([contactPhone])
+  @@index([segment])
+  @@index([userLine])
+  @@index([userId])
+  @@index([tabulation])
+  @@index([datetime])
+  @@index([archived, datetime])
+  @@index([archivedAt])
+}
+
+model Tag {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  segment     Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+  @@index([segment])
+}
+
+model ApiLog {
+  id              Int      @id @default(autoincrement())
+  endpoint        String
+  method          String
+  requestPayload  String   @db.Text
+  responsePayload String   @db.Text
+  statusCode      Int
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  @@index([endpoint])
+  @@index([method])
+  @@index([statusCode])
+  @@index([createdAt])
+}
+
+// Template para mensagens de campanha (vinculado a segmento)
+model Template {
+  id            Int      @id @default(autoincrement())
+  name          String
+  language      String   @default("pt_BR")
+  category      String   @default("MARKETING")
+  segmentId     Int? // null = global (todos os segmentos)
+  lineId        Int? // Mantido para compatibilidade (pode ser removido futuramente)
+  namespace     String?
+  status        String   @default("APPROVED")
+  headerType    String?
+  headerContent String?  @db.Text
+  bodyText      String   @db.Text
+  footerText    String?
+  buttons       String?  @db.Text
+  variables     String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([name])
+  @@index([segmentId])
+  @@index([status])
+  @@index([category])
+}
+
+// Histórico de envios de templates
+model TemplateMessage {
+  id           Int      @id @default(autoincrement())
+  templateId   Int
+  contactPhone String
+  contactName  String?
+  lineId       Int
+  status       String   @default("SENT")
+  messageId    String?
+  variables    String?  @db.Text
+  errorMessage String?
+  campaignId   Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([templateId])
+  @@index([contactPhone])
+  @@index([lineId])
+  @@index([status])
+  @@index([campaignId])
+  @@index([createdAt])
+}
+
+// Painel de Controle - Configurações globais do sistema
+model ControlPanel {
+  id        Int  @id @default(autoincrement())
+  segmentId Int? // null = global (todos os segmentos)
+
+  // Frases de bloqueio automático (JSON array de strings)
+  blockPhrasesEnabled Boolean @default(true) // Ativar/desativar frases de bloqueio
+  blockPhrases        String? @db.Text
+  blockTabulationId   Int? // Tabulação padrão ao bloquear
+
+  // Temporizador de CPC (em horas)
+  cpcCooldownEnabled Boolean @default(true) // Ativar/desativar temporizador de CPC
+  cpcCooldownHours   Int     @default(24)
+
+  // Reenvio - Intervalo mínimo entre campanhas para o mesmo telefone (em horas)
+  resendCooldownEnabled Boolean @default(true) // Ativar/desativar controle de reenvio
+  resendCooldownHours   Int     @default(24)
+
+  // Repescagem - Controle de mensagens seguidas do operador
+  repescagemEnabled       Boolean @default(false)
+  repescagemMaxMessages   Int     @default(2) // Quantas msgs seguidas antes de bloquear
+  repescagemCooldownHours Int     @default(24) // Tempo de espera após bloqueio
+  repescagemMaxAttempts   Int     @default(2) // Limite de repescagens (0 = ilimitado)
+
+  // Linhas ativas - Controla quais linhas podem ser usadas para atribuição (deprecated, manter para compatibilidade)
+  activeLines String? @db.Text // JSON array de IDs de linhas (null = todas ativas)
+
+  // Mensagem automática quando cliente não responde
+  autoMessageEnabled     Boolean @default(false) // Ativar/desativar mensagem automática (desativado por padrão)
+  autoMessageHours       Int     @default(24) // Quantas horas sem resposta antes de enviar mensagem
+  autoMessageText        String? @db.Text // Texto da mensagem automática (ex: "Oi, ainda está aí?")
+  autoMessageMaxAttempts Int     @default(1) // Quantas vezes enviar a mensagem (padrão 1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([segmentId])
+  @@index([segmentId])
+}
+
+// Histórico de repescagem por contato
+model ContactRepescagem {
+  id             Int       @id @default(autoincrement())
+  contactPhone   String
+  operatorId     Int
+  messagesCount  Int       @default(0) // Contagem de msgs seguidas do operador
+  attempts       Int       @default(0) // Quantidade de repescagens realizadas
+  blockedUntil   DateTime? // Bloqueado até essa data
+  permanentBlock Boolean   @default(false) // Se true, só libera se cliente responder
+  lastMessageAt  DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([contactPhone, operatorId])
+  @@index([contactPhone])
+  @@index([operatorId])
+  @@index([blockedUntil])
+}
+
+// Histórico de envio para controle de reenvio
+model SendHistory {
+  id           Int      @id @default(autoincrement())
+  contactPhone String
+  campaignId   Int?
+  lineId       Int?
+  sentAt       DateTime @default(now())
+
+  @@index([contactPhone])
+  @@index([sentAt])
+}
+
+// Fila de mensagens quando não há operador online
+model MessageQueue {
+  id           Int       @id @default(autoincrement())
+  contactPhone String
+  contactName  String?
+  message      String    @db.Text
+  messageType  String    @default("text")
+  mediaUrl     String?
+  segment      Int?
+  status       String    @default("pending") // pending, processing, sent, failed
+  attempts     Int       @default(0)
+  errorMessage String?   @db.Text
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  processedAt  DateTime?
+
+  @@index([status])
+  @@index([contactPhone])
+  @@index([segment])
+  @@index([createdAt])
+}
+
+// Eventos do sistema para acompanhamento e métricas
+model SystemEvent {
+  id        Int      @id @default(autoincrement())
+  type      String // Tipo do evento (operator_connected, line_assigned, message_sent, etc.)
+  module    String // Módulo que gerou o evento (websocket, lines, webhooks, etc.)
+  data      String?  @db.Text // Dados adicionais em JSON
+  userId    Int? // ID do usuário relacionado (se aplicável)
+  severity  String   @default("info") // info, warning, error, success
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([module])
+  @@index([userId])
+  @@index([severity])
+  @@index([createdAt])
+}
