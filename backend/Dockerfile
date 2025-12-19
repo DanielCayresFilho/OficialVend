@@ -46,8 +46,8 @@ RUN npm ci --only=production
 # Copiar Prisma schema e migrations
 COPY prisma ./prisma/
 
-# Gerar Prisma Client para produção (não precisa de DATABASE_URL para generate)
-RUN npx prisma generate
+# Gerar Prisma Client para produção (usar DATABASE_URL vazia durante build)
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 
 # Copiar build da aplicação do stage anterior
 COPY --from=builder /app/dist ./dist
