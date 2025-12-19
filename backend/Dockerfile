@@ -43,16 +43,15 @@ COPY package*.json ./
 # Instalar apenas dependências de produção
 RUN npm ci --only=production
 
-# Copiar Prisma schema e migrations
+# Copiar Prisma schema e migrations (necessário para migrate deploy)
 COPY prisma ./prisma/
-
-# Gerar Prisma Client para produção (usar DATABASE_URL vazia durante build)
-RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 
 # Copiar build da aplicação do stage anterior
 COPY --from=builder /app/dist ./dist
 
-# Copiar qualquer arquivo estático necessário
+# Copiar Prisma Client gerado do builder (contém código gerado)
+# O @prisma/client já será instalado via npm ci --only=production acima
+# Mas precisamos copiar os arquivos gerados (.prisma)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Verificar novamente se os arquivos estão corretos
