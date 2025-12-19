@@ -46,7 +46,7 @@ RUN npm ci --only=production
 # Copiar Prisma schema e migrations
 COPY prisma ./prisma/
 
-# Gerar Prisma Client para produção
+# Gerar Prisma Client para produção (não precisa de DATABASE_URL para generate)
 RUN npx prisma generate
 
 # Copiar build da aplicação do stage anterior
@@ -58,12 +58,22 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 # Verificar novamente se os arquivos estão corretos
 RUN ls -la dist/ && test -f dist/main.js
 
+# Copiar script de entrypoint
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+
 # Criar diretório para uploads
 RUN mkdir -p /app/uploads
 
 # Usuário não-root para segurança
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+
+# Dar permissão de execução ao entrypoint
+RUN chmod +x /app/docker-entrypoint.sh
+
+# Garantir que o usuário nodejs tenha permissão em todos os arquivos
 RUN chown -R nodejs:nodejs /app
+
+# Usar usuário nodejs (prisma migrate deploy funcionará com este usuário)
 USER nodejs
 
 EXPOSE 3000
@@ -72,4 +82,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
 
+# Usar entrypoint para executar migrações antes de iniciar
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["node", "dist/main"]
