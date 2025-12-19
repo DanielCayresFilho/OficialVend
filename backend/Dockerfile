@@ -43,8 +43,9 @@ COPY package*.json ./
 # Instalar apenas dependências de produção
 RUN npm ci --only=production
 
-# Copiar Prisma schema e migrations (necessário para migrate deploy)
+# Copiar Prisma schema, migrations e config (necessário para migrate deploy)
 COPY prisma ./prisma/
+COPY prisma.config.ts ./prisma.config.ts
 
 # Copiar build da aplicação do stage anterior
 COPY --from=builder /app/dist ./dist
