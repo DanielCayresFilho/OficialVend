@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Send, FileText, MessageCircle, ArrowRight, ArrowLeft, Loader2, Wifi, WifiOff, Edit, UserCheck, X, Check, Phone, AlertTriangle, RefreshCw, Search, Menu } from "lucide-react";
+import { Plus, Send, FileText, MessageCircle, ArrowRight, ArrowLeft, Loader2, Wifi, WifiOff, Edit, UserCheck, X, Check, Phone, AlertTriangle, RefreshCw, Search, Menu, Download } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -799,6 +799,102 @@ export default function Atendimento() {
     }
   };
 
+  const handleDownloadPDF = useCallback(() => {
+    if (!selectedConversation) return;
+
+    // Criar HTML formatado para a conversa
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Conversa - ${selectedConversation.contactName}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      border-bottom: 2px solid #333;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+    .header p {
+      margin: 5px 0;
+      color: #666;
+    }
+    .message {
+      margin-bottom: 15px;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .message.operator {
+      background-color: #e3f2fd;
+      margin-left: 20%;
+      text-align: right;
+    }
+    .message.contact {
+      background-color: #f5f5f5;
+      margin-right: 20%;
+    }
+    .message-header {
+      font-weight: bold;
+      margin-bottom: 5px;
+      font-size: 12px;
+      color: #666;
+    }
+    .message-content {
+      margin-bottom: 5px;
+    }
+    .message-time {
+      font-size: 11px;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${selectedConversation.contactName}</h1>
+    <p>Telefone: ${selectedConversation.contactPhone}</p>
+    <p>Data: ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
+  </div>
+  ${selectedConversation.messages.map(msg => `
+    <div class="message ${msg.sender === 'operator' ? 'operator' : 'contact'}">
+      <div class="message-header">${msg.sender === 'operator' ? (msg.userName || 'Operador') : selectedConversation.contactName}</div>
+      <div class="message-content">${msg.message || (msg.mediaUrl ? `[${msg.messageType}]` : '')}</div>
+      <div class="message-time">${format(new Date(msg.datetime), 'dd/MM/yyyy HH:mm:ss')}</div>
+    </div>
+  `).join('')}
+</body>
+</html>
+    `;
+
+    // Criar blob e abrir em nova janela para impressão
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, '_blank');
+    
+    if (printWindow) {
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+          URL.revokeObjectURL(url);
+        }, 250);
+      };
+    }
+
+    toast({
+      title: "Download iniciado",
+      description: "Use a opção 'Salvar como PDF' na janela de impressão",
+    });
+  }, [selectedConversation]);
+
   return (
     <MainLayout>
       <div className="h-[calc(100vh-6rem)] flex flex-col md:flex-row gap-4 relative">
@@ -1106,6 +1202,18 @@ export default function Atendimento() {
                       <TooltipContent>Editar Contato</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  {user?.role === 'admin' && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleDownloadPDF}>
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Baixar conversa em PDF</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

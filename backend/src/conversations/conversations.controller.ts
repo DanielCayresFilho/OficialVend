@@ -40,7 +40,7 @@ export class ConversationsController {
       // Supervisor só vê conversas do seu segmento
       where.segment = user.segment;
     }
-    // Admin não tem filtro - vê todas as conversas
+    // Admin e digital não têm filtro - veem todas as conversas
 
     return this.conversationsService.findAll(where);
   }
@@ -50,8 +50,8 @@ export class ConversationsController {
   getActiveConversations(@CurrentUser() user: any) {
     console.log(`📋 [GET /conversations/active] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}`);
     
-    // Admin vê TODAS as conversas ativas (sem filtro)
-    if (user.role === Role.admin) {
+    // Admin e digital veem TODAS as conversas ativas (sem filtro)
+    if (user.role === Role.admin || user.role === Role.digital) {
       return this.conversationsService.findAll({ tabulation: null });
     }
     // Supervisor vê apenas conversas ativas do seu segmento
@@ -68,8 +68,8 @@ export class ConversationsController {
   getTabulatedConversations(@CurrentUser() user: any) {
     console.log(`📋 [GET /conversations/tabulated] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}`);
     
-    // Admin vê TODAS as conversas tabuladas (sem filtro)
-    if (user.role === Role.admin) {
+    // Admin e digital veem TODAS as conversas tabuladas (sem filtro)
+    if (user.role === Role.admin || user.role === Role.digital) {
       return this.conversationsService.findAll({ tabulation: { not: null } });
     }
     // Supervisor vê apenas conversas tabuladas do seu segmento
@@ -82,7 +82,7 @@ export class ConversationsController {
   }
 
   @Get('segment/:segment')
-  @Roles(Role.supervisor, Role.admin)
+  @Roles(Role.supervisor, Role.admin, Role.digital)
   getBySegment(
     @Param('segment') segment: string,
     @Query('tabulated') tabulated?: string,
@@ -100,7 +100,7 @@ export class ConversationsController {
     @Query('tabulated') tabulated?: string,
     @CurrentUser() user?: any,
   ) {
-    // Admin e Supervisor podem ver qualquer contato
+    // Admin, digital e Supervisor podem ver qualquer contato
     // Operador só pode ver contatos da sua linha
     if (user?.role === Role.operator && user?.line) {
       // Verificar se o contato tem conversas na linha do operador
@@ -161,7 +161,7 @@ export class ConversationsController {
   }
 
   @Delete(':id')
-  @Roles(Role.admin, Role.supervisor)
+  @Roles(Role.admin, Role.supervisor, Role.digital)
   remove(@Param('id') id: string) {
     return this.conversationsService.remove(+id);
   }

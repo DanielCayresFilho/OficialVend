@@ -2,11 +2,14 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Criar .npmrc para usar legacy-peer-deps
+RUN echo "legacy-peer-deps=true" > .npmrc
+
 # Copiar dependências
 COPY package*.json ./
 
 # Instalar dependências
-RUN npm install --legacy-peer-deps
+RUN npm ci
 
 # Copiar código fonte
 COPY . .

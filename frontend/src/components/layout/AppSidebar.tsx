@@ -48,15 +48,15 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { title: "Atendimento", url: "/atendimento", icon: Headphones, color: "text-cyan", roles: ['operador', 'admin'] },
-  { title: "Supervisionar", url: "/supervisionar", icon: Eye, color: "text-warning", roles: ['supervisor', 'admin'] },
-  { title: "Contatos", url: "/contatos", icon: BookUser, color: "text-cyan", roles: ['supervisor', 'admin'] },
-  { title: "Campanhas", url: "/campanhas", icon: Megaphone, color: "text-primary", roles: ['supervisor', 'admin'] },
-  { title: "Tabulações", url: "/tabulacoes", icon: Table2, color: "text-whatsapp", roles: ['supervisor', 'admin'] },
-  { title: "Segmentos", url: "/segmentos", icon: Filter, color: "text-destructive", roles: ['admin'] },
-  { title: "Blocklist", url: "/blocklist", icon: Ban, color: "text-muted-foreground", roles: ['supervisor', 'admin'] },
-  { title: "Templates", url: "/templates", icon: FileText, color: "text-primary", roles: ['supervisor', 'admin'] },
-  { title: "Relatórios", url: "/relatorios", icon: BarChart3, color: "text-success", roles: ['supervisor', 'admin'] },
-  { title: "Acompanhamento", url: "/acompanhamento", icon: Activity, color: "text-primary", roles: ['supervisor', 'admin'] },
+  { title: "Supervisionar", url: "/supervisionar", icon: Eye, color: "text-warning", roles: ['supervisor', 'digital', 'admin'] },
+  { title: "Contatos", url: "/contatos", icon: BookUser, color: "text-cyan", roles: ['supervisor', 'digital', 'admin'] },
+  { title: "Campanhas", url: "/campanhas", icon: Megaphone, color: "text-primary", roles: ['supervisor', 'digital', 'admin'] },
+  { title: "Tabulações", url: "/tabulacoes", icon: Table2, color: "text-whatsapp", roles: ['supervisor', 'digital', 'admin'] },
+  { title: "Segmentos", url: "/segmentos", icon: Filter, color: "text-destructive", roles: ['admin', 'digital'] },
+  { title: "Blocklist", url: "/blocklist", icon: Ban, color: "text-muted-foreground", roles: ['supervisor', 'digital', 'admin'] },
+  { title: "Templates", url: "/templates", icon: FileText, color: "text-primary", roles: ['supervisor', 'digital', 'admin'] },
+  { title: "Relatórios", url: "/relatorios", icon: BarChart3, color: "text-success", roles: ['supervisor', 'digital', 'admin'] },
+  { title: "Acompanhamento", url: "/acompanhamento", icon: Activity, color: "text-primary", roles: ['admin'] },
   { title: "Produtividade Ativadores", url: "/produtividade-ativadores", icon: TrendingUp, color: "text-success", roles: ['admin'] },
   { title: "Painel Controle", url: "/painel-controle", icon: Sliders, color: "text-purple-500", roles: ['admin'] },
   { title: "Linhas", url: "/linhas", icon: Phone, color: "text-whatsapp", roles: ['admin', 'ativador'] },
@@ -82,7 +82,8 @@ export function AppSidebar() {
     admin: 'Administrador',
     supervisor: 'Supervisor',
     operador: 'Operador',
-    ativador: 'Ativador'
+    ativador: 'Ativador',
+    digital: 'Digital'
   };
 
   const toggleTheme = () => {

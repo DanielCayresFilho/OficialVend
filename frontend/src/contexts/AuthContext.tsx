@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { authService, getAuthToken, setAuthToken, type LoginResponse } from '@/services/api';
 
-export type UserRole = 'admin' | 'supervisor' | 'operador';
+export type UserRole = 'admin' | 'supervisor' | 'operador' | 'ativador' | 'digital';
 
 export interface User {
   id: string;
@@ -37,6 +37,8 @@ const mapRole = (apiRole: string): UserRole => {
       return 'operador';
     case 'ativador':
       return 'ativador';
+    case 'digital':
+      return 'digital';
     default:
       return 'operador';
   }

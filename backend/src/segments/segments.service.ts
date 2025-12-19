@@ -23,14 +23,24 @@ export class SegmentsService {
     });
   }
 
-  async findAll(search?: string) {
+  async findAll(search?: string, segmentId?: number) {
+    const where: any = {};
+    
+    // Se segmentId foi fornecido (supervisor), filtrar apenas esse segmento
+    if (segmentId) {
+      where.id = segmentId;
+    }
+    
+    // Adicionar filtro de busca se fornecido
+    if (search) {
+      where.name = {
+        contains: search,
+        mode: 'insensitive',
+      };
+    }
+    
     return this.prisma.segment.findMany({
-      where: search ? {
-        name: {
-          contains: search,
-          mode: 'insensitive',
-        },
-      } : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       orderBy: {
         name: 'asc',
       },

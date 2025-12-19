@@ -12,6 +12,7 @@ enum Role {
   operator
   supervisor
   ativador
+  digital
 }
 
 enum Status {

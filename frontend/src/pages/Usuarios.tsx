@@ -22,7 +22,7 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'supervisor' | 'operador' | 'ativador';
+  role: 'admin' | 'supervisor' | 'operador' | 'ativador' | 'digital';
   segment?: number;
   line?: number;
   lineName?: string;
@@ -35,33 +35,37 @@ const roleColors = {
   admin: "bg-destructive text-destructive-foreground",
   supervisor: "bg-warning text-warning-foreground",
   operador: "bg-success text-success-foreground",
-  ativador: "bg-blue-600 text-white"
+  ativador: "bg-blue-600 text-white",
+  digital: "bg-purple-600 text-white"
 };
 
 const roleLabels = {
   admin: "Admin",
   supervisor: "Supervisor",
   operador: "Operador",
-  ativador: "Ativador"
+  ativador: "Ativador",
+  digital: "Digital"
 };
 
 // Map API role to frontend role
-const mapRole = (apiRole: string): 'admin' | 'supervisor' | 'operador' | 'ativador' => {
+const mapRole = (apiRole: string): 'admin' | 'supervisor' | 'operador' | 'ativador' | 'digital' => {
   switch (apiRole) {
     case 'admin': return 'admin';
     case 'supervisor': return 'supervisor';
     case 'operator': return 'operador';
     case 'ativador': return 'ativador';
+    case 'digital': return 'digital';
     default: return 'operador';
   }
 };
 
 // Map frontend role to API role
-const mapRoleToApi = (role: string): 'admin' | 'supervisor' | 'operator' | 'ativador' => {
+const mapRoleToApi = (role: string): 'admin' | 'supervisor' | 'operator' | 'ativador' | 'digital' => {
   switch (role) {
     case 'admin': return 'admin';
     case 'supervisor': return 'supervisor';
     case 'operador': return 'operator';
+    case 'digital': return 'digital';
     case 'ativador': return 'ativador';
     default: return 'operator';
   }
@@ -342,6 +346,7 @@ export default function Usuarios() {
           <SelectContent>
             <SelectItem value="admin">Administrador</SelectItem>
             <SelectItem value="supervisor">Supervisor</SelectItem>
+            <SelectItem value="digital">Digital</SelectItem>
             <SelectItem value="operador">Operador</SelectItem>
             <SelectItem value="ativador">Ativador</SelectItem>
           </SelectContent>

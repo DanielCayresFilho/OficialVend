@@ -626,6 +626,10 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         console.error('❌ [WebSocket] Operador sem permissão para 1x1');
         return { error: 'Você não tem permissão para iniciar conversas 1x1' };
       }
+
+      // SEMPRE bloquear mensagens normais em nova conversa - primeira mensagem DEVE ser template
+      console.error('❌ [WebSocket] Tentativa de enviar mensagem normal em nova conversa 1x1. Primeira mensagem deve ser template.');
+      return { error: 'A primeira mensagem em uma nova conversa 1x1 deve ser enviada através de um template. Use a opção de criar nova conversa com template.' };
     }
 
     try {

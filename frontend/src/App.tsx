@@ -66,6 +66,17 @@ function DashboardRoute() {
   return <Dashboard />;
 }
 
+function AcompanhamentoRoute() {
+  const { user } = useAuth();
+  
+  // Apenas admins podem acessar a página de acompanhamento
+  if (user?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+  
+  return <Acompanhamento />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -87,7 +98,7 @@ function AppRoutes() {
       <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
       <Route path="/painel-controle" element={<ProtectedRoute><PainelControle /></ProtectedRoute>} />
       <Route path="/produtividade-ativadores" element={<ProtectedRoute><ProdutividadeAtivadores /></ProtectedRoute>} />
-      <Route path="/acompanhamento" element={<ProtectedRoute><Acompanhamento /></ProtectedRoute>} />
+      <Route path="/acompanhamento" element={<ProtectedRoute><AcompanhamentoRoute /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
