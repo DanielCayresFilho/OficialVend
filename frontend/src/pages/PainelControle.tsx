@@ -12,8 +12,7 @@ import {
   Timer,
   RotateCcw,
   Repeat,
-  Users,
-  Send
+  Users
 } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -103,10 +102,8 @@ export default function PainelControle() {
         repescagemMaxMessages: settings.repescagemMaxMessages,
         repescagemCooldownHours: settings.repescagemCooldownHours,
         repescagemMaxAttempts: settings.repescagemMaxAttempts,
-        autoMessageEnabled: settings.autoMessageEnabled,
-        autoMessageHours: settings.autoMessageHours,
-        autoMessageText: settings.autoMessageText,
-        autoMessageMaxAttempts: settings.autoMessageMaxAttempts,
+        // Repescagem automática desativada e oculta
+        autoMessageEnabled: false,
         blockTabulationId: settings.blockTabulationId,
         activeLines: settings.activeLines,
       });
@@ -515,106 +512,6 @@ export default function PainelControle() {
                       <li>• Bloqueio por {settings?.repescagemCooldownHours || 24}h</li>
                       <li>• Após {settings?.repescagemMaxAttempts || 2} repescagens: bloqueio permanente</li>
                       <li>• Cliente responde: todos os bloqueios são resetados</li>
-                    </ul>
-                  </div>
-                </>
-              )}
-            </div>
-          </GlassCard>
-
-          {/* Mensagem Automática (Repescagem Automática) */}
-          <GlassCard className="col-span-1">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Send className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold">Repescagem Automática</h2>
-                <p className="text-sm text-muted-foreground">
-                  Enviar mensagem automática quando cliente não responde
-                </p>
-              </div>
-            </div>
-
-            <Separator className="mb-4" />
-
-            <div className="space-y-4">
-              {/* Ativar/Desativar */}
-              <div className="flex items-center justify-between rounded-lg border p-4">
-                <div className="space-y-0.5">
-                  <Label className="text-base font-medium">Ativar Repescagem Automática</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Enviar mensagem automática após X horas sem resposta
-                  </p>
-                </div>
-                <Switch
-                  checked={settings?.autoMessageEnabled || false}
-                  onCheckedChange={(checked) => setSettings(s => s ? {...s, autoMessageEnabled: checked} : null)}
-                />
-              </div>
-
-              {settings?.autoMessageEnabled && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="auto-msg-hours">Horas sem resposta para enviar</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="auto-msg-hours"
-                        type="number"
-                        min={1}
-                        max={720}
-                        value={settings?.autoMessageHours || 24}
-                        onChange={(e) => setSettings(s => s ? {...s, autoMessageHours: parseInt(e.target.value) || 24} : null)}
-                        className="w-24"
-                      />
-                      <span className="text-sm text-muted-foreground">horas</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Após quantas horas sem resposta do cliente enviar a mensagem automática
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="auto-msg-text">Mensagem a ser enviada</Label>
-                    <Input
-                      id="auto-msg-text"
-                      type="text"
-                      placeholder="Ex: Oi, ainda está aí?"
-                      value={settings?.autoMessageText || ''}
-                      onChange={(e) => setSettings(s => s ? {...s, autoMessageText: e.target.value} : null)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Texto da mensagem que será enviada automaticamente
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="auto-msg-max-attempts">Quantidade máxima de envios</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="auto-msg-max-attempts"
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={settings?.autoMessageMaxAttempts || 1}
-                        onChange={(e) => setSettings(s => s ? {...s, autoMessageMaxAttempts: parseInt(e.target.value) || 1} : null)}
-                        className="w-24"
-                      />
-                      <span className="text-sm text-muted-foreground">vezes</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Quantas vezes a mensagem automática pode ser enviada para o mesmo contato
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
-                    <p className="text-sm font-medium">Como funciona:</p>
-                    <ul className="text-xs text-muted-foreground space-y-1">
-                      <li>• Sistema verifica conversas ativas a cada 50-70 minutos</li>
-                      <li>• Se última mensagem é do operador há mais de {settings?.autoMessageHours || 24}h</li>
-                      <li>• E cliente não respondeu após a última mensagem</li>
-                      <li>• Sistema envia automaticamente: &quot;{settings?.autoMessageText || 'Oi, ainda está aí?'}&quot;</li>
-                      <li>• Máximo de {settings?.autoMessageMaxAttempts || 1} envio(s) por contato</li>
                     </ul>
                   </div>
                 </>
