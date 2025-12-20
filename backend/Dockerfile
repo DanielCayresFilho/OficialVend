@@ -20,9 +20,6 @@ RUN npx prisma generate
 # Build da aplicação NestJS
 RUN npm run build
 
-# Compilar seed separadamente
-RUN npx tsc prisma/seed.ts --outDir dist/prisma --esModuleInterop --skipLibCheck --module commonjs --target ES2021
-
 # Debug: mostrar estrutura do dist
 RUN ls -la dist/
 
@@ -40,8 +37,9 @@ WORKDIR /app
 # Copiar package.json e package-lock.json
 COPY package*.json ./
 
-# Instalar apenas dependências de produção
-RUN npm ci --only=production
+# Instalar apenas dependências de produção + tsx e dotenv para seed
+RUN npm ci --only=production && \
+    npm install tsx dotenv @types/node
 
 # Copiar Prisma schema, migrations e config (necessário para migrate deploy)
 COPY prisma ./prisma/
