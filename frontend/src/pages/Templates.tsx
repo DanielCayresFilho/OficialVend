@@ -631,12 +631,12 @@ export default function Templates() {
                 id="bodyText"
                 value={formData.bodyText}
                 onChange={(e) => setFormData({ ...formData, bodyText: e.target.value })}
-                placeholder="Texto principal do template. Use {{1}}, {{2}}, etc. para variáveis."
+                placeholder={`Texto principal do template. Use {{1}}, {{2}}, etc. para variáveis.`}
                 rows={6}
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Use {{1}}, {{2}}, etc. para variáveis que serão substituídas ao enviar
+                Use {'{{1}}'}, {'{{2}}'}, etc. para variáveis que serão substituídas ao enviar
               </p>
             </div>
 
