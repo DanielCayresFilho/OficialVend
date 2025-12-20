@@ -14,6 +14,15 @@ export class TemplatesService {
   ) {}
 
   async create(createTemplateDto: CreateTemplateDto) {
+    // Validar campos obrigatórios
+    if (!createTemplateDto.name || !createTemplateDto.name.trim()) {
+      throw new BadRequestException('Nome do template é obrigatório');
+    }
+
+    if (!createTemplateDto.bodyText || !createTemplateDto.bodyText.trim()) {
+      throw new BadRequestException('Corpo do template (bodyText) é obrigatório');
+    }
+
     // Se um segmento foi fornecido, verificar se existe
     if (createTemplateDto.segmentId) {
       const segment = await this.prisma.segment.findUnique({
@@ -31,16 +40,16 @@ export class TemplatesService {
 
     return this.prisma.template.create({
       data: {
-        name: createTemplateDto.name,
+        name: createTemplateDto.name.trim(),
         language: createTemplateDto.language || 'pt_BR',
         category: createTemplateDto.category || 'MARKETING',
         segmentId: createTemplateDto.segmentId || null,  // null = global
         lineId: createTemplateDto.lineId || null,  // Mantido para compatibilidade
-        namespace: createTemplateDto.namespace,
-        headerType: createTemplateDto.headerType,
-        headerContent: createTemplateDto.headerContent,
-        bodyText: createTemplateDto.bodyText,
-        footerText: createTemplateDto.footerText,
+        namespace: createTemplateDto.namespace?.trim() || null,
+        headerType: createTemplateDto.headerType || null,
+        headerContent: createTemplateDto.headerContent?.trim() || null,
+        bodyText: createTemplateDto.bodyText.trim(),
+        footerText: createTemplateDto.footerText?.trim() || null,
         buttons,
         variables,
         status: 'APPROVED',  // Templates internos já vêm aprovados

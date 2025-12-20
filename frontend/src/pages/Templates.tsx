@@ -81,16 +81,18 @@ export default function Templates() {
     namespace: string;
     headerType: string;
     header: string;
+    bodyText: string;
     footer: string;
     status: 'APPROVED' | 'PENDING' | 'REJECTED';
   }>({
     name: '',
     segmentId: '',
     language: 'pt_BR',
-    category: '',
+    category: 'MARKETING',
     namespace: '',
     headerType: 'TEXT',
     header: '',
+    bodyText: '',
     footer: '',
     status: 'APPROVED'
   });
@@ -213,10 +215,11 @@ export default function Templates() {
       name: '',
       segmentId: '',
       language: 'pt_BR',
-      category: '',
+      category: 'MARKETING',
       namespace: '',
       headerType: 'TEXT',
       header: '',
+      bodyText: '',
       footer: '',
       status: 'APPROVED'
     });
@@ -229,10 +232,11 @@ export default function Templates() {
       name: template.name,
       segmentId: template.segmentId?.toString() || '',
       language: template.language || 'pt_BR',
-      category: template.category,
+      category: template.category || 'MARKETING',
       namespace: template.namespace || '',
       headerType: template.headerType || 'TEXT',
       header: template.header || '',
+      bodyText: template.body || '',
       footer: template.footer || '',
       status: template.status
     });
@@ -266,20 +270,45 @@ export default function Templates() {
       return;
     }
 
+    if (!formData.bodyText.trim()) {
+      toast({
+        title: "Campo obrigatório",
+        description: "Corpo do template é obrigatório",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const payload = {
+      // Construir payload removendo campos vazios/undefined
+      const payload: any = {
         name: formData.name.trim(),
-        segmentId: formData.segmentId ? parseInt(formData.segmentId) : undefined,
-        language: formData.language,
-        category: formData.category as 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' || undefined,
-        namespace: formData.namespace.trim() || undefined,
-        headerType: formData.headerType as 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' || undefined,
-        headerContent: formData.header.trim() || undefined,
-        footerText: formData.footer.trim() || undefined,
-        status: formData.status,
-        // bodyText e variables são definidos diretamente na Meta, não no sistema
+        bodyText: formData.bodyText.trim(),
+        language: formData.language || 'pt_BR',
+        category: (formData.category as 'MARKETING' | 'UTILITY' | 'AUTHENTICATION') || 'MARKETING',
       };
+
+      // Adicionar campos opcionais apenas se tiverem valor
+      if (formData.segmentId) {
+        payload.segmentId = parseInt(formData.segmentId);
+      }
+
+      if (formData.namespace.trim()) {
+        payload.namespace = formData.namespace.trim();
+      }
+
+      if (formData.headerType) {
+        payload.headerType = formData.headerType as 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+      }
+
+      if (formData.header.trim()) {
+        payload.headerContent = formData.header.trim();
+      }
+
+      if (formData.footer.trim()) {
+        payload.footerText = formData.footer.trim();
+      }
 
       if (editingTemplate) {
         const updated = await templatesService.update(parseInt(editingTemplate.id), payload);
@@ -556,25 +585,83 @@ export default function Templates() {
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-              <p className="text-sm text-muted-foreground">
-                <strong>Nota:</strong> O corpo do template e as variáveis são definidos diretamente na Meta Business Manager. 
-                Este sistema apenas referencia o template pelo nome.
-              </p>
-            </div>
-
             <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select value={formData.status} onValueChange={(value: 'APPROVED' | 'PENDING' | 'REJECTED') => setFormData({ ...formData, status: value })}>
+              <Label htmlFor="headerType">Tipo de Cabeçalho</Label>
+              <Select value={formData.headerType} onValueChange={(value) => setFormData({ ...formData, headerType: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="APPROVED">Aprovado</SelectItem>
-                  <SelectItem value="PENDING">Pendente</SelectItem>
-                  <SelectItem value="REJECTED">Rejeitado</SelectItem>
+                  <SelectItem value="TEXT">Texto</SelectItem>
+                  <SelectItem value="IMAGE">Imagem</SelectItem>
+                  <SelectItem value="VIDEO">Vídeo</SelectItem>
+                  <SelectItem value="DOCUMENT">Documento</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {formData.headerType === 'TEXT' && (
+              <div className="space-y-2">
+                <Label htmlFor="header">Cabeçalho</Label>
+                <Textarea
+                  id="header"
+                  value={formData.header}
+                  onChange={(e) => setFormData({ ...formData, header: e.target.value })}
+                  placeholder="Texto do cabeçalho (opcional)"
+                  rows={2}
+                />
+              </div>
+            )}
+
+            {formData.headerType !== 'TEXT' && formData.headerType && (
+              <div className="space-y-2">
+                <Label htmlFor="header">URL do Cabeçalho ({formData.headerType})</Label>
+                <Input
+                  id="header"
+                  value={formData.header}
+                  onChange={(e) => setFormData({ ...formData, header: e.target.value })}
+                  placeholder={`URL da ${formData.headerType.toLowerCase()}`}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="bodyText">Corpo do Template *</Label>
+              <Textarea
+                id="bodyText"
+                value={formData.bodyText}
+                onChange={(e) => setFormData({ ...formData, bodyText: e.target.value })}
+                placeholder="Texto principal do template. Use {{1}}, {{2}}, etc. para variáveis."
+                rows={6}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Use {{1}}, {{2}}, etc. para variáveis que serão substituídas ao enviar
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="footer">Rodapé</Label>
+              <Textarea
+                id="footer"
+                value={formData.footer}
+                onChange={(e) => setFormData({ ...formData, footer: e.target.value })}
+                placeholder="Texto do rodapé (opcional)"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="namespace">Namespace</Label>
+              <Input
+                id="namespace"
+                value={formData.namespace}
+                onChange={(e) => setFormData({ ...formData, namespace: e.target.value })}
+                placeholder="Namespace do template (opcional)"
+              />
+              <p className="text-xs text-muted-foreground">
+                Namespace retornado pela Meta após sincronização
+              </p>
             </div>
           </div>
           <DialogFooter>
