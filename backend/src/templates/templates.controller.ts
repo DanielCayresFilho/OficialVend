@@ -17,6 +17,7 @@ import { SendTemplateDto, SendTemplateMassiveDto } from './dto/send-template.dto
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('templates')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -89,8 +90,8 @@ export class TemplatesController {
 
   @Post('send')
   @Roles('admin', 'supervisor', 'operator')
-  sendTemplate(@Body() sendTemplateDto: SendTemplateDto) {
-    return this.templatesService.sendTemplate(sendTemplateDto);
+  sendTemplate(@Body() sendTemplateDto: SendTemplateDto, @CurrentUser() user: any) {
+    return this.templatesService.sendTemplate(sendTemplateDto, user);
   }
 
   /**

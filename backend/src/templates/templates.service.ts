@@ -294,7 +294,7 @@ export class TemplatesService {
   /**
    * Envia template para um contato (1x1)
    */
-  async sendTemplate(dto: SendTemplateDto) {
+  async sendTemplate(dto: SendTemplateDto, user?: any) {
     const template = await this.findOne(dto.templateId);
     
     // Usar lineId do DTO ou do template
@@ -354,14 +354,30 @@ export class TemplatesService {
         messageText = messageText.replace(`{{${v.key}}}`, v.value);
       });
 
+      // Buscar contato para obter segmento
+      const contact = await this.prisma.contact.findFirst({
+        where: { phone: dto.phone },
+      });
+
+      // Buscar operador se userId foi fornecido
+      let operator = null;
+      if (user?.id) {
+        operator = await this.prisma.user.findUnique({
+          where: { id: user.id },
+        });
+      }
+
       await this.prisma.conversation.create({
         data: {
-          contactName: dto.contactName || 'Contato',
+          contactName: dto.contactName || contact?.name || 'Contato',
           contactPhone: dto.phone,
+          segment: contact?.segment || line.segment || operator?.segment || null,
+          userName: operator?.name || null,
+          userLine: lineId,
+          userId: operator?.id || null, // IMPORTANTE: userId é necessário para filtrar conversas do operador
           message: `[TEMPLATE: ${template.name}] ${messageText}`,
           sender: 'operator',
           messageType: 'template',
-          userLine: lineId,
         },
       });
     }
