@@ -297,6 +297,9 @@ export class TemplatesService {
   async sendTemplate(dto: SendTemplateDto, user?: any) {
     const template = await this.findOne(dto.templateId);
     
+    // Normalizar telefone (adicionar 55, remover caracteres especiais)
+    const normalizedPhone = this.phoneValidationService.normalizePhone(dto.phone);
+    
     // Usar lineId do DTO ou do template
     const lineId = dto.lineId || template.lineId;
     
@@ -308,9 +311,9 @@ export class TemplatesService {
       throw new NotFoundException(`Linha com ID ${lineId} não encontrada`);
     }
 
-    // Verificar blocklist
+    // Verificar blocklist (usar telefone normalizado)
     const isBlocked = await this.prisma.blockList.findFirst({
-      where: { phone: dto.phone },
+      where: { phone: normalizedPhone },
     });
 
     if (isBlocked) {
@@ -329,13 +332,13 @@ export class TemplatesService {
       throw new BadRequestException('Linha não possui app ou accessToken configurados');
     }
 
-    const result = await this.sendViaCloudApi(line, app, template, dto.phone, variables);
+    const result = await this.sendViaCloudApi(line, app, template, normalizedPhone, variables);
 
     // Criar registro de envio
     const templateMessage = await this.prisma.templateMessage.create({
       data: {
         templateId: dto.templateId,
-        contactPhone: dto.phone,
+        contactPhone: normalizedPhone,
         contactName: dto.contactName,
         lineId,
         status: result.success ? 'SENT' : 'FAILED',
@@ -354,9 +357,9 @@ export class TemplatesService {
         messageText = messageText.replace(`{{${v.key}}}`, v.value);
       });
 
-      // Buscar contato para obter segmento
+      // Buscar contato para obter segmento (usar telefone normalizado)
       const contact = await this.prisma.contact.findFirst({
-        where: { phone: dto.phone },
+        where: { phone: normalizedPhone },
       });
 
       // Buscar operador se userId foi fornecido
@@ -370,7 +373,7 @@ export class TemplatesService {
       await this.prisma.conversation.create({
         data: {
           contactName: dto.contactName || contact?.name || 'Contato',
-          contactPhone: dto.phone,
+          contactPhone: normalizedPhone,
           segment: contact?.segment || line.segment || operator?.segment || null,
           userName: operator?.name || null,
           userLine: lineId,

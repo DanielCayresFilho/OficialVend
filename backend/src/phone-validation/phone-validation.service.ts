@@ -109,6 +109,58 @@ export class PhoneValidationService {
   }
 
   /**
+   * Normaliza número de telefone para envio
+   * - Remove caracteres especiais (-, espaços, parênteses, etc)
+   * - Adiciona código do país (55) se não tiver
+   * - Remove zeros à esquerda se necessário
+   * - Garante formato correto para envio (55XXXXXXXXXXX)
+   * @param phone Número de telefone
+   * @returns Número normalizado (ex: 5511999999999)
+   */
+  normalizePhone(phone: string): string {
+    if (!phone) return '';
+
+    // Remover todos os caracteres não numéricos
+    let clean = phone.replace(/\D/g, '');
+
+    if (!clean) return '';
+
+    // Remover zeros à esquerda (exceto se for número internacional que começa com 0)
+    // Se começar com 0 e tiver mais de 10 dígitos, pode ser número internacional
+    if (clean.startsWith('0') && clean.length <= 10) {
+      clean = clean.replace(/^0+/, '');
+    }
+
+    // Se já começar com 55, retornar como está (já está normalizado)
+    if (clean.startsWith('55')) {
+      // Verificar se tem pelo menos 12 dígitos (55 + DDD + número)
+      if (clean.length >= 12) {
+        return clean;
+      }
+      // Se tem menos de 12 dígitos, pode estar incompleto, mas retornar mesmo assim
+      return clean;
+    }
+
+    // Se não começar com 55, adicionar código do país
+    // Verificar se parece ser número brasileiro (10 ou 11 dígitos sem código do país)
+    if (clean.length === 10 || clean.length === 11) {
+      // Número brasileiro sem código do país - adicionar 55
+      return `55${clean}`;
+    }
+
+    // Se tiver mais de 11 dígitos e não começar com 55, pode ser número internacional
+    // Nesse caso, assumir que já está no formato correto ou adicionar 55 se necessário
+    if (clean.length > 11) {
+      // Pode ser número internacional, retornar como está
+      return clean;
+    }
+
+    // Para outros casos (menos de 10 dígitos), adicionar 55 mesmo assim
+    // O WhatsApp vai validar se o número é válido
+    return `55${clean}`;
+  }
+
+  /**
    * Formata número de telefone para exibição
    * @param phone Número de telefone
    * @returns Número formatado (ex: (11) 98765-4321)

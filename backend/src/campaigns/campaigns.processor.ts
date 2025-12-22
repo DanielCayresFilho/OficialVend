@@ -9,6 +9,7 @@ import { LineReputationService } from '../line-reputation/line-reputation.servic
 import { AppLoggerService } from '../logger/logger.service';
 import { WhatsappCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { ControlPanelService } from '../control-panel/control-panel.service';
+import { PhoneValidationService } from '../phone-validation/phone-validation.service';
 import axios from 'axios';
 
 interface TemplateVariable {
@@ -28,6 +29,7 @@ export class CampaignsProcessor {
     private logger: AppLoggerService,
     private whatsappCloudService: WhatsappCloudService,
     private controlPanelService: ControlPanelService,
+    private phoneValidationService: PhoneValidationService,
   ) {}
 
   @Process('send-campaign-message')
@@ -35,7 +37,7 @@ export class CampaignsProcessor {
     const { 
       campaignId, 
       contactName, 
-      contactPhone, 
+      contactPhone: rawContactPhone, 
       contactSegment, 
       lineId, 
       message,
@@ -45,6 +47,9 @@ export class CampaignsProcessor {
     } = job.data;
 
     try {
+      // Normalizar telefone (adicionar 55, remover caracteres especiais)
+      const contactPhone = this.phoneValidationService.normalizePhone(rawContactPhone);
+
       // Verificar se está na blocklist
       const isBlocked = await this.blocklistService.isBlocked(contactPhone);
       if (isBlocked) {
@@ -127,8 +132,6 @@ export class CampaignsProcessor {
         throw new Error('Linha não possui app ou accessToken configurados');
       }
 
-      const cleanPhone = contactPhone.replace(/\D/g, '');
-
       let retries = 0;
       let sent = false;
       let finalMessage = message || 'Olá! Esta é uma mensagem da nossa campanha.';
@@ -158,8 +161,8 @@ export class CampaignsProcessor {
 
             finalMessage = templateText;
 
-            // Enviar via Cloud API
-            await this.sendTemplateViaCloudApi(line, app, template, cleanPhone, variables);
+            // Enviar via Cloud API (contactPhone já está normalizado)
+            await this.sendTemplateViaCloudApi(line, app, template, contactPhone, variables);
 
             // Registrar envio de template
             await this.prisma.templateMessage.create({

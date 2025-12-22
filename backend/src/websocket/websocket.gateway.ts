@@ -435,6 +435,9 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       return { error: 'Usuário não autenticado' };
     }
 
+    // Normalizar telefone (adicionar 55, remover caracteres especiais)
+    data.contactPhone = this.phoneValidationService.normalizePhone(data.contactPhone);
+
     // Buscar linha atual do operador (pode estar na tabela LineOperator ou no campo legacy)
     let currentLineId = user.line;
     if (!currentLineId) {

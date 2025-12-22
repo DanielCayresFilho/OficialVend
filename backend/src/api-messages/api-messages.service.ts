@@ -182,8 +182,11 @@ export class ApiMessagesService {
     // Processar cada mensagem
     for (const message of dto.messages) {
       try {
+        // Normalizar telefone (adicionar 55, remover caracteres especiais)
+        const normalizedPhone = this.phoneValidationService.normalizePhone(message.phone);
+
         // Validação de número: Verificar se o número é válido antes de processar
-        const phoneValidation = this.phoneValidationService.isValidFormat(message.phone);
+        const phoneValidation = this.phoneValidationService.isValidFormat(normalizedPhone);
         if (!phoneValidation) {
           errors.push({
             phone: message.phone,
@@ -192,8 +195,8 @@ export class ApiMessagesService {
           continue;
         }
 
-        // Verificar CPC
-        const cpcCheck = await this.canSendCpcMessage(message.phone);
+        // Verificar CPC (usar telefone normalizado)
+        const cpcCheck = await this.canSendCpcMessage(normalizedPhone);
         if (!cpcCheck.canSend) {
           errors.push({
             phone: message.phone,
@@ -241,11 +244,11 @@ export class ApiMessagesService {
           continue;
         }
 
-        // Verificar blocklist
+        // Verificar blocklist (usar telefone normalizado)
         const isBlocked = await this.prisma.blockList.findFirst({
           where: {
             OR: [
-              { phone: message.phone },
+              { phone: normalizedPhone },
               { cpf: message.contract },
             ],
           },
@@ -304,17 +307,17 @@ export class ApiMessagesService {
 
         // Nota: WhatsApp Cloud API não suporta typing indicator
 
-        // Enviar mensagem
+        // Enviar mensagem (usar telefone normalizado)
         if (useTemplate && templateId && template) {
           // Enviar via Cloud API
-          sent = await this.sendTemplateViaCloudApi(line, app, template, message.phone, templateVariables);
+          sent = await this.sendTemplateViaCloudApi(line, app, template, normalizedPhone, templateVariables);
 
           // Registrar envio de template
           if (sent) {
             await this.prisma.templateMessage.create({
               data: {
                 templateId: template.id,
-                contactPhone: message.phone,
+                contactPhone: normalizedPhone,
                 contactName: message.clientId,
                 lineId: line.id,
                 status: 'SENT',
@@ -326,7 +329,7 @@ export class ApiMessagesService {
           // Enviar mensagem de texto normal via Cloud API
           sent = await this.sendMessageViaCloudApi(
             line,
-            message.phone,
+            normalizedPhone,
             message.mainTemplate,
           );
         }
@@ -339,8 +342,8 @@ export class ApiMessagesService {
           continue;
         }
 
-        // Buscar ou criar contato
-        let contact = await this.contactsService.findByPhone(message.phone);
+        // Buscar ou criar contato (usar telefone normalizado)
+        let contact = await this.contactsService.findByPhone(normalizedPhone);
         if (!contact) {
           contact = await this.contactsService.create({
             name: message.clientId || 'Cliente',
@@ -362,7 +365,7 @@ export class ApiMessagesService {
         // Criar conversa
         await this.conversationsService.create({
           contactName: contact.name,
-          contactPhone: message.phone,
+          contactPhone: normalizedPhone,
           segment: tag.segment || operator.segment || null,
           userName: operator.name,
           userLine: operator.line!,
@@ -420,7 +423,8 @@ export class ApiMessagesService {
     variables: TemplateVariableDto[],
   ): Promise<boolean> {
     try {
-      const cleanPhone = phone.replace(/\D/g, '');
+      // Telefone já deve estar normalizado quando chega aqui
+      const cleanPhone = phone;
 
       // Montar componentes com variáveis
       const components: any[] = [];

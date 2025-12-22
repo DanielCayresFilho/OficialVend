@@ -4,6 +4,7 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
@@ -61,6 +62,7 @@ export default function Atendimento() {
   const [tabulations, setTabulations] = useState<Tabulation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [messageText, setMessageText] = useState<string>("");
   const [newContactName, setNewContactName] = useState("");
   const [newContactPhone, setNewContactPhone] = useState("");
   const [newContactCpf, setNewContactCpf] = useState("");
@@ -630,6 +632,74 @@ export default function Atendimento() {
       handleFileUpload(file);
     }
   }, [handleFileUpload]);
+
+  // Verificar se pode enviar mensagem livre (não precisa de template)
+  const canSendFreeMessage = useCallback((conversation: ConversationGroup | null): boolean => {
+    if (!conversation) return false;
+    
+    // Verificar se há mensagens do operador na conversa
+    const hasOperatorMessages = conversation.messages.some(msg => msg.sender === 'operator');
+    
+    // Verificar se a conversa foi iniciada pelo cliente (primeira mensagem é do cliente)
+    const isInbound = conversation.messages.length > 0 && conversation.messages[0]?.sender === 'contact';
+    
+    // Pode enviar mensagem livre se:
+    // 1. Já há mensagens do operador (não é primeira mensagem), OU
+    // 2. A conversa foi iniciada pelo cliente (inbound - janela de 24h da Meta)
+    return hasOperatorMessages || isInbound;
+  }, []);
+
+  const handleSendMessage = useCallback(async () => {
+    if (!messageText.trim() || !selectedConversation || isSending) {
+      if (!messageText.trim()) {
+        toast({
+          title: "Mensagem vazia",
+          description: "Digite uma mensagem para enviar",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    // Verificar se pode enviar mensagem livre
+    if (!canSendFreeMessage(selectedConversation)) {
+      toast({
+        title: "Template obrigatório",
+        description: "A primeira mensagem deve ser um template aprovado",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      // Enviar mensagem livre via WebSocket
+      realtimeSocket.emit('send-message', {
+        contactPhone: selectedConversation.contactPhone,
+        message: messageText.trim(),
+        messageType: 'text',
+        isNewConversation: false, // Já existe conversa
+      });
+
+      setMessageText(""); // Limpar campo
+      playSuccessSound();
+      
+      // Recarregar conversas após um pequeno delay para garantir que a mensagem foi processada
+      setTimeout(() => {
+        loadConversations();
+      }, 500);
+    } catch (error) {
+      playErrorSound();
+      toast({
+        title: "Erro ao enviar mensagem",
+        description: error instanceof Error ? error.message : "Erro ao enviar mensagem",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
+    }
+  }, [messageText, selectedConversation, isSending, canSendFreeMessage, playSuccessSound, playErrorSound, loadConversations]);
 
   const handleSendTemplate = useCallback(async () => {
     if (!selectedTemplateId || !selectedConversation || isSending) {
@@ -1424,46 +1494,132 @@ export default function Atendimento() {
                 </div>
               </ScrollArea>
 
-              {/* Template Input */}
+              {/* Message Input */}
               <div className="p-4 border-t border-border/50 flex-shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div className="flex gap-2">
-                  <Select 
-                    value={selectedTemplateId} 
-                    onValueChange={setSelectedTemplateId}
-                    disabled={isSending || isLoadingTemplates || !selectedConversation}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder={isLoadingTemplates ? "Carregando templates..." : "Selecione um template"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates.length === 0 ? (
-                        <div className="p-2 text-sm text-muted-foreground">
-                          Nenhum template disponível
-                        </div>
-                      ) : (
-                        templates.map((template) => (
-                          <SelectItem key={template.id} value={template.id.toString()}>
-                            {template.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <Button 
-                    size="icon" 
-                    onClick={handleSendTemplate} 
-                    disabled={isSending || !selectedTemplateId || isLoadingTemplates}
-                  >
-                    {isSending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
+                {selectedConversation && canSendFreeMessage(selectedConversation) ? (
+                  // Mensagem livre (quando já há mensagens do operador ou é inbound)
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Textarea
+                        value={messageText}
+                        onChange={(e) => setMessageText(e.target.value)}
+                        placeholder="Digite sua mensagem..."
+                        disabled={isSending || !selectedConversation}
+                        rows={3}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+                        }}
+                        className="flex-1 resize-none"
+                      />
+                      <Button 
+                        size="icon" 
+                        onClick={handleSendMessage} 
+                        disabled={isSending || !messageText.trim()}
+                        className="self-end"
+                      >
+                        {isSending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Você também pode enviar um template usando o seletor abaixo
+                    </p>
+                    <Select 
+                      value={selectedTemplateId} 
+                      onValueChange={setSelectedTemplateId}
+                      disabled={isSending || isLoadingTemplates}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={isLoadingTemplates ? "Carregando templates..." : "Ou selecione um template (opcional)"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templates.length === 0 ? (
+                          <div className="p-2 text-sm text-muted-foreground">
+                            Nenhum template disponível
+                          </div>
+                        ) : (
+                          templates.map((template) => (
+                            <SelectItem key={template.id} value={template.id.toString()}>
+                              {template.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {selectedTemplateId && (
+                      <Button 
+                        onClick={handleSendTemplate} 
+                        disabled={isSending || !selectedTemplateId || isLoadingTemplates}
+                        className="w-full"
+                        variant="outline"
+                      >
+                        {isSending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="h-4 w-4 mr-2" />
+                            Enviar Template
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  No 1x1, apenas templates aprovados podem ser enviados
-                </p>
+                  </div>
+                ) : (
+                  // Template obrigatório (primeira mensagem outbound)
+                  <div className="space-y-2">
+                    <Select 
+                      value={selectedTemplateId} 
+                      onValueChange={setSelectedTemplateId}
+                      disabled={isSending || isLoadingTemplates || !selectedConversation}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={isLoadingTemplates ? "Carregando templates..." : "Selecione um template (obrigatório)"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templates.length === 0 ? (
+                          <div className="p-2 text-sm text-muted-foreground">
+                            Nenhum template disponível
+                          </div>
+                        ) : (
+                          templates.map((template) => (
+                            <SelectItem key={template.id} value={template.id.toString()}>
+                              {template.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button 
+                      onClick={handleSendTemplate} 
+                      disabled={isSending || !selectedTemplateId || isLoadingTemplates}
+                      className="w-full"
+                    >
+                      {isSending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-2" />
+                          Enviar Template
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      A primeira mensagem deve ser um template aprovado. Após isso, você poderá enviar mensagens livres.
+                    </p>
+                  </div>
+                )}
               </div>
             </>
           ) : (

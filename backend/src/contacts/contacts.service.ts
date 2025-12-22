@@ -2,15 +2,22 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
+import { PhoneValidationService } from '../phone-validation/phone-validation.service';
 
 @Injectable()
 export class ContactsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private phoneValidationService: PhoneValidationService,
+  ) {}
 
   async create(createContactDto: CreateContactDto) {
+    // Normalizar telefone (adicionar 55, remover caracteres especiais)
+    const normalizedPhone = this.phoneValidationService.normalizePhone(createContactDto.phone);
+    
     // Usar upsert para evitar duplicados - se já existir, atualiza; se não, cria
     return this.prisma.contact.upsert({
-      where: { phone: createContactDto.phone },
+      where: { phone: normalizedPhone },
       update: {
         // Atualizar apenas se novos dados forem fornecidos
         name: createContactDto.name,
@@ -19,7 +26,10 @@ export class ContactsService {
         ...(createContactDto.segment !== undefined && { segment: createContactDto.segment }),
         ...(createContactDto.isCPC !== undefined && { isCPC: createContactDto.isCPC }),
       },
-      create: createContactDto,
+      create: {
+        ...createContactDto,
+        phone: normalizedPhone,
+      },
     });
   }
 

@@ -13,6 +13,7 @@ import { LineReputationModule } from '../line-reputation/line-reputation.module'
 import { LoggerModule } from '../logger/logger.module';
 import { WhatsappCloudModule } from '../whatsapp-cloud/whatsapp-cloud.module';
 import { ControlPanelModule } from '../control-panel/control-panel.module';
+import { PhoneValidationModule } from '../phone-validation/phone-validation.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ControlPanelModule } from '../control-panel/control-panel.module';
     LoggerModule,
     WhatsappCloudModule,
     ControlPanelModule,
+    PhoneValidationModule,
   ],
   controllers: [CampaignsController],
   providers: [CampaignsService, CampaignsProcessor, PrismaService],
