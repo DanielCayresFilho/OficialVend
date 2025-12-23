@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Body, Query, Headers, HttpCode, HttpStatus, BadRequestException, Req, RawBodyRequest } from '@nestjs/common';
-import { Request } from 'express';
+import { Controller, Get, Post, Body, Query, Headers, HttpCode, HttpStatus, BadRequestException, Req, RawBodyRequest, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { CloudApiWebhookService } from './cloud-api-webhook.service';
 import { WhatsappCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { PrismaService } from '../prisma.service';
@@ -15,26 +15,41 @@ export class CloudApiWebhookController {
   /**
    * GET /webhooks/cloud-api
    * Verificação de webhook do Meta (challenge)
+   * IMPORTANTE: A Meta espera que retornemos APENAS o challenge como texto puro, não JSON
    */
   @Get('cloud-api')
-  @HttpCode(HttpStatus.OK)
   verifyWebhook(
-    @Query('hub.mode') mode: string,
-    @Query('hub.verify_token') verifyToken: string,
-    @Query('hub.challenge') challenge: string,
+    @Query('hub.mode') mode?: string,
+    @Query('hub.verify_token') verifyToken?: string,
+    @Query('hub.challenge') challenge?: string,
+    @Res() res: Response,
   ) {
     // Buscar token de verificação da variável de ambiente (obrigatório)
     const expectedToken = process.env.WEBHOOK_VERIFY_TOKEN;
     
     if (!expectedToken) {
-      throw new BadRequestException('WEBHOOK_VERIFY_TOKEN não configurado');
+      console.error('❌ [Webhook] WEBHOOK_VERIFY_TOKEN não configurado no .env');
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).type('text/plain').send('WEBHOOK_VERIFY_TOKEN não configurado');
     }
 
-    if (mode === 'subscribe' && verifyToken === expectedToken) {
-      return challenge;
+    // Validar parâmetros obrigatórios
+    if (!mode || !verifyToken || !challenge) {
+      console.warn(`⚠️ [Webhook] Parâmetros faltando - mode: ${mode}, verifyToken: ${verifyToken ? 'presente' : 'ausente'}, challenge: ${challenge ? 'presente' : 'ausente'}`);
+      return res.status(HttpStatus.BAD_REQUEST).type('text/plain').send('Parâmetros obrigatórios faltando');
     }
 
-    throw new BadRequestException('Token de verificação inválido');
+    // Log para debug (sem expor o token completo)
+    const tokenMatch = verifyToken === expectedToken;
+    console.log(`🔍 [Webhook] Verificação recebida - mode: ${mode}, token length: ${verifyToken.length}, token match: ${tokenMatch}`);
+
+    if (mode === 'subscribe' && tokenMatch) {
+      console.log(`✅ [Webhook] Verificação bem-sucedida, retornando challenge (length: ${challenge.length})`);
+      // Retornar challenge como texto puro (text/plain) - A Meta espera APENAS o challenge, sem JSON
+      return res.status(HttpStatus.OK).type('text/plain').send(challenge);
+    }
+
+    console.warn(`⚠️ [Webhook] Verificação falhou - mode: ${mode}, token match: ${tokenMatch}`);
+    return res.status(HttpStatus.FORBIDDEN).type('text/plain').send('Token de verificação inválido');
   }
 
   /**

@@ -26,6 +26,9 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      skipMissingProperties: false,
+      skipNullProperties: false,
+      skipUndefinedProperties: true, // Permitir undefined (útil para query params opcionais)
     }),
   );
 
