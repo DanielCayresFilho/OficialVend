@@ -19,10 +19,10 @@ export class CloudApiWebhookController {
    */
   @Get('cloud-api')
   verifyWebhook(
+    @Res() res: Response,
     @Query('hub.mode') mode?: string,
     @Query('hub.verify_token') verifyToken?: string,
     @Query('hub.challenge') challenge?: string,
-    @Res() res: Response,
   ) {
     // Buscar token de verificação da variável de ambiente (obrigatório)
     const expectedToken = process.env.WEBHOOK_VERIFY_TOKEN;
