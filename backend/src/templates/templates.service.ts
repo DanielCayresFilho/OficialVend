@@ -4,6 +4,7 @@ import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { SendTemplateDto, SendTemplateMassiveDto, TemplateVariableDto } from './dto/send-template.dto';
 import { WhatsappCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
+import { PhoneValidationService } from '../phone-validation/phone-validation.service';
 import axios from 'axios';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class TemplatesService {
   constructor(
     private prisma: PrismaService,
     private whatsappCloudService: WhatsappCloudService,
+    private phoneValidationService: PhoneValidationService,
   ) {}
 
   async create(createTemplateDto: CreateTemplateDto) {
