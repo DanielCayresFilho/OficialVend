@@ -346,11 +346,6 @@ export class LinesService {
           createdAt: true,
           updatedAt: true,
         },
-        select: {
-          contactPhone: true,
-          contactName: true,
-          userId: true,
-        },
         distinct: ['contactPhone', 'userId'], // Evitar duplicatas
       });
 
