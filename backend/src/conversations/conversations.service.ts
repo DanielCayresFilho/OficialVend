@@ -42,6 +42,25 @@ export class ConversationsService {
       orderBy: {
         datetime: 'desc',
       },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
 
@@ -61,6 +80,25 @@ export class ConversationsService {
       orderBy: {
         datetime: 'asc',
       },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
 
@@ -79,10 +117,31 @@ export class ConversationsService {
     }
 
     // Retornar TODAS as mensagens não tabuladas (o frontend vai agrupar)
+    // Usar select explícito para evitar problemas com campos que podem não existir no banco
     const conversations = await this.prisma.conversation.findMany({
       where,
       orderBy: {
         datetime: 'asc', // Ordem cronológica para histórico
+      },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        // messageId omitido temporariamente até confirmar que a coluna existe no banco
       },
     });
 
@@ -104,10 +163,31 @@ export class ConversationsService {
     }
 
     // Retornar TODAS as mensagens tabuladas (o frontend vai agrupar)
+    // Usar select explícito para evitar problemas com campos que podem não existir no banco
     const conversations = await this.prisma.conversation.findMany({
       where,
       orderBy: {
         datetime: 'asc', // Ordem cronológica para histórico
+      },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        // messageId omitido temporariamente até confirmar que a coluna existe no banco
       },
     });
 
