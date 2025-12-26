@@ -41,7 +41,7 @@ COPY package*.json ./
 RUN npm ci --only=production && \
     npm install tsx dotenv @types/node
 
-# Copiar Prisma schema, migrations e config (necessário para migrate deploy)
+# Copiar Prisma schema e config (necessário para seed e Prisma Client)
 COPY prisma ./prisma/
 COPY prisma.config.ts ./prisma.config.ts
 
