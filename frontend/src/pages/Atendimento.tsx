@@ -797,6 +797,85 @@ export default function Atendimento() {
     }
   }, [selectedConversation, playSuccessSound, playErrorSound]);
 
+  // Carregar operadores quando o dialog de transferência abrir
+  useEffect(() => {
+    if (isTransferDialogOpen && selectedConversation) {
+      const loadOperators = async () => {
+        setIsLoadingOperators(true);
+        try {
+          // Buscar operadores online do mesmo segmento
+          const segment = user?.segment || selectedConversation.messages[0]?.segment;
+          const operators = await usersService.getOnlineOperators(segment || undefined);
+          // Filtrar o operador atual se houver
+          const filtered = operators.filter(op => op.id !== user?.id);
+          setAvailableOperators(filtered);
+        } catch (error) {
+          console.error('Erro ao carregar operadores:', error);
+          toast({
+            title: "Erro ao carregar operadores",
+            description: "Não foi possível carregar a lista de operadores",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoadingOperators(false);
+        }
+      };
+      loadOperators();
+    }
+  }, [isTransferDialogOpen, selectedConversation, user]);
+
+  const handleTransfer = useCallback(async () => {
+    if (!selectedConversation || !selectedOperatorId) {
+      toast({
+        title: "Operador não selecionado",
+        description: "Selecione um operador para transferir a conversa",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Usar o ID da primeira mensagem da conversa para transferir
+      const firstMessage = selectedConversation.messages[0];
+      if (!firstMessage) {
+        toast({
+          title: "Erro",
+          description: "Não foi possível identificar a conversa",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await conversationsService.transfer(firstMessage.id, parseInt(selectedOperatorId));
+      
+      playSuccessSound();
+      toast({
+        title: "Conversa transferida",
+        description: "A conversa foi transferida com sucesso",
+      });
+      
+      // Fechar dialog e limpar seleção
+      setIsTransferDialogOpen(false);
+      setSelectedOperatorId("");
+      
+      // Remover conversa da lista atual (ela será atribuída ao novo operador)
+      setConversations(prev => prev.filter(c => c.contactPhone !== selectedConversation.contactPhone));
+      setSelectedConversation(null);
+      
+      // Recarregar conversas após um delay
+      setTimeout(() => {
+        loadConversations();
+      }, 500);
+    } catch (error) {
+      playErrorSound();
+      toast({
+        title: "Erro ao transferir",
+        description: error instanceof Error ? error.message : "Erro ao transferir conversa",
+        variant: "destructive",
+      });
+    }
+  }, [selectedConversation, selectedOperatorId, playSuccessSound, playErrorSound, loadConversations, user]);
+
   const handleNewConversation = useCallback(async () => {
     if (!newContactName.trim() || !newContactPhone.trim()) {
       toast({
