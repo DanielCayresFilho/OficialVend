@@ -328,55 +328,6 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         currentLineId = lineOperator?.lineId || null;
       }
 
-      if (!currentLineId) {
-
-      if (availableLine) {
-        // Verificar quantos operadores já estão vinculados
-        const currentOperatorsCount = await (this.prisma as any).lineOperator.count({
-          where: { lineId: availableLine.id },
-        });
-
-        if (currentOperatorsCount < 2) {
-          // Verificar se a linha já tem operadores de outro segmento
-          const existingOperators = await (this.prisma as any).lineOperator.findMany({
-            where: { lineId: availableLine.id },
-            include: { user: true },
-          });
-
-          // Se a linha já tem operadores, verificar se são do mesmo segmento
-          if (existingOperators.length > 0) {
-            const allSameSegment = existingOperators.every((lo: any) => 
-              lo.user.segment === user.segment
-            );
-            
-            if (!allSameSegment) {
-              // Linha já tem operador de outro segmento, não pode atribuir
-              availableLine = null;
-            }
-          }
-
-          // Só vincular se passou na validação de segmento
-          if (availableLine) {
-            // Vincular operador à linha usando método com transaction + lock
-            try {
-              await this.linesService.assignOperatorToLine(availableLine.id, user.id);
-              
-              // Atualizar user object e currentLineId
-              user.line = availableLine.id;
-              currentLineId = availableLine.id;
-
-              console.log(`✅ [WebSocket] Linha ${availableLine.phone} atribuída automaticamente ao operador ${user.name} (segmento ${availableLine.segment || 'sem segmento'})`);
-              
-              // Notificação removida - operador não precisa saber
-            } catch (error) {
-              console.error(`❌ [WebSocket] Erro ao vincular linha ${availableLine.id} ao operador ${user.id}:`, error.message);
-              // Continuar para tentar outra linha
-              availableLine = null;
-            }
-          }
-        }
-      }
-
       // Se operador não tem linha, retornar erro
       if (!currentLineId) {
         console.error('❌ [WebSocket] Operador sem linha atribuída - linha deve ser atribuída manualmente');
