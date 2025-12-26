@@ -13,12 +13,33 @@ export class ConversationsService {
   ) {}
 
   async create(createConversationDto: CreateConversationDto) {
-    return this.prisma.conversation.create({
+    const conversation = await this.prisma.conversation.create({
       data: {
         ...createConversationDto,
         datetime: new Date(),
       },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        // messageId omitido temporariamente até confirmar que a coluna existe no banco
+      },
     });
+    return conversation;
   }
 
   async findAll(filters?: any) {
@@ -197,6 +218,25 @@ export class ConversationsService {
   async findOne(id: number) {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     if (!conversation) {
@@ -212,6 +252,25 @@ export class ConversationsService {
     return this.prisma.conversation.update({
       where: { id },
       data: updateConversationDto,
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
 
@@ -294,6 +353,25 @@ export class ConversationsService {
         sender: 'operator',
         messageType: 'text',
         tabulation: null, // Conversa ativa
+      },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 

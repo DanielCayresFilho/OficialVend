@@ -43,6 +43,25 @@ export class ApiMessagesService {
     const conversations = await this.prisma.conversation.findMany({
       where: { contactPhone: phone },
       orderBy: { datetime: 'asc' },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     if (conversations.length === 0) {

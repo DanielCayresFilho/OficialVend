@@ -196,6 +196,25 @@ export class AutoMessageService implements OnModuleInit {
               sender: 'operator',
               messageType: 'text',
             },
+            select: {
+              id: true,
+              contactName: true,
+              contactPhone: true,
+              segment: true,
+              userName: true,
+              userLine: true,
+              userId: true,
+              message: true,
+              sender: true,
+              datetime: true,
+              tabulation: true,
+              messageType: true,
+              mediaUrl: true,
+              archived: true,
+              archivedAt: true,
+              createdAt: true,
+              updatedAt: true,
+            },
           });
 
           // Buscar o App para obter o accessToken

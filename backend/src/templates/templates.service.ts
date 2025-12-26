@@ -427,6 +427,25 @@ export class TemplatesService {
           sender: 'operator',
           messageType: 'template',
         },
+        select: {
+          id: true,
+          contactName: true,
+          contactPhone: true,
+          segment: true,
+          userName: true,
+          userLine: true,
+          userId: true,
+          message: true,
+          sender: true,
+          datetime: true,
+          tabulation: true,
+          messageType: true,
+          mediaUrl: true,
+          archived: true,
+          archivedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
     }
 
