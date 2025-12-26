@@ -409,54 +409,18 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         return { error: 'Limite de mensagens atingido' };
       }
 
-      // Humanização: Simular comportamento humano antes de enviar
-      const messageLength = data.message?.length || 0;
-      const isResponse = !data.isNewConversation; // Se não é nova conversa, é resposta
-      const humanizedDelay = await this.humanizationService.getHumanizedDelay(messageLength, isResponse);
+      // REMOVIDO: Delay de humanização - não é necessário para mensagens do operador
+      // O delay de humanização deve ser usado apenas em campanhas massivas, não em mensagens normais do operador
       
-      await this.humanizationService.sleep(humanizedDelay);
-
-      // Health check: Validar credenciais Cloud API (com cache)
-      try {
-        const isValid = await this.whatsappCloudService.validateCredentials(
-          app.accessToken,
-          line.numberId,
-        );
-        
-        if (!isValid) {
-          console.warn(`⚠️ [WebSocket] Linha ${line.phone} com credenciais inválidas. Realocando para ${user.name}...`);
-          const reallocationResult = await this.lineAssignmentService.reallocateLineForOperator(user.id, user.segment, currentLineId);
-          
-          if (reallocationResult.success && reallocationResult.lineId && reallocationResult.lineId !== currentLineId) {
-            user.line = reallocationResult.lineId;
-            currentLineId = reallocationResult.lineId;
-            
-            const newLine = await this.prisma.linesStock.findUnique({
-              where: { id: reallocationResult.lineId },
-            });
-            
-            if (newLine) {
-              line = newLine;
-              // Buscar o novo App
-              const newApp = await this.prisma.app.findUnique({
-                where: { id: newLine.appId },
-              });
-              if (newApp) {
-                app = newApp;
-              } else {
-                return { error: 'Nova linha realocada, mas App não encontrado' };
-              }
-            } else {
-              return { error: 'Linha com credenciais inválidas e realocada, mas nova linha não encontrada' };
-            }
-          } else {
-            return { error: 'Linha com credenciais inválidas e não foi possível realocar' };
-          }
-        }
-      } catch (healthError: any) {
-        // Erro no health check não deve bloquear envio (pode ser problema temporário da API)
-        console.warn('⚠️ [WebSocket] Erro ao validar credenciais:', healthError.message);
-      }
+      // Health check: Validar credenciais Cloud API (assíncrono, não bloqueia envio)
+      // Executar em paralelo para não atrasar o envio
+      const healthCheckPromise = this.whatsappCloudService.validateCredentials(
+        app.accessToken,
+        line.numberId,
+      ).catch((error: any) => {
+        console.warn('⚠️ [WebSocket] Erro ao validar credenciais (não bloqueia envio):', error.message);
+        return true; // Continuar mesmo se falhar
+      });
 
       // Enviar mensagem via WhatsApp Cloud API
       let apiResponse;
@@ -619,34 +583,49 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       // Log apenas para mensagens enviadas com sucesso (fluxo principal)
       console.log(`✅ Mensagem enviada: ${user.name} → ${data.contactPhone}`);
       
-      // Registrar mensagem do operador para controle de repescagem
-      await this.controlPanelService.registerOperatorMessage(
-        data.contactPhone,
-        user.id,
-        user.segment
-      );
-      
-      // Registrar evento de mensagem enviada
-      await this.systemEventsService.logEvent(
-        EventType.MESSAGE_SENT,
-        EventModule.WEBSOCKET,
-        {
-          userId: user.id,
-          userName: user.name,
-          contactPhone: data.contactPhone,
-          messageType: data.messageType || 'text',
-          lineId: currentLineId,
-          linePhone: line?.phone,
-        },
-        user.id,
-        EventSeverity.INFO,
-      );
-      
-      // Emitir mensagem para o usuário (usar mesmo formato que new_message)
+      // Emitir mensagem para o usuário IMEDIATAMENTE (antes de registros assíncronos)
       client.emit('message-sent', { message: conversation });
 
       // Se houver supervisores online do mesmo segmento, enviar para eles também
       this.emitToSupervisors(user.segment, 'new_message', { message: conversation });
+
+      // Executar registros e validações em paralelo (não bloquear resposta)
+      Promise.all([
+        // Registrar mensagem do operador para controle de repescagem (assíncrono)
+        this.controlPanelService.registerOperatorMessage(
+          data.contactPhone,
+          user.id,
+          user.segment
+        ).catch(err => console.warn('Erro ao registrar mensagem do operador:', err)),
+        
+        // Registrar evento de mensagem enviada (assíncrono)
+        this.systemEventsService.logEvent(
+          EventType.MESSAGE_SENT,
+          EventModule.WEBSOCKET,
+          {
+            userId: user.id,
+            userName: user.name,
+            contactPhone: data.contactPhone,
+            messageType: data.messageType || 'text',
+            lineId: currentLineId,
+            linePhone: line?.phone,
+          },
+          user.id,
+          EventSeverity.INFO,
+        ).catch(err => console.warn('Erro ao registrar evento:', err)),
+        
+        // Verificar health check (se ainda não terminou)
+        healthCheckPromise.then(isValid => {
+          if (!isValid) {
+            console.warn(`⚠️ [WebSocket] Linha ${line.phone} com credenciais inválidas. Realocando em background...`);
+            // Realocar em background sem bloquear
+            this.lineAssignmentService.reallocateLineForOperator(user.id, user.segment, currentLineId)
+              .catch(err => console.warn('Erro ao realocar linha:', err));
+          }
+        }),
+      ]).catch(() => {
+        // Ignorar erros em operações assíncronas
+      });
 
       return { success: true, conversation };
     } catch (error: any) {

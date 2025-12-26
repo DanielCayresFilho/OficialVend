@@ -141,19 +141,24 @@ export class CloudApiWebhookService {
           if (value.messages && Array.isArray(value.messages)) {
             for (const message of value.messages) {
               // Verificar idempotência - evitar processar mensagem duplicada
-              // Verificar se já existe conversa recente (últimos 2 minutos) com mesmo timestamp e telefone
+              // Verificar se já existe conversa muito recente (últimos 15 segundos) com mesmo timestamp e telefone
+              // Reduzido de 2 minutos para 15 segundos para melhorar performance
               const messageTimestamp = parseInt(message.timestamp) * 1000;
               const existingConversation = await this.prisma.conversation.findFirst({
                 where: {
                   contactPhone: message.from,
                   datetime: {
-                    gte: new Date(messageTimestamp - 120000), // 2 minutos antes
-                    lte: new Date(messageTimestamp + 120000), // 2 minutos depois
+                    gte: new Date(messageTimestamp - 15000), // 15 segundos antes
+                    lte: new Date(messageTimestamp + 15000), // 15 segundos depois
                   },
                   sender: 'contact', // Apenas mensagens recebidas
                 },
                 orderBy: {
                   datetime: 'desc',
+                },
+                select: {
+                  id: true,
+                  datetime: true, // Apenas campos necessários para verificação
                 },
               });
 
