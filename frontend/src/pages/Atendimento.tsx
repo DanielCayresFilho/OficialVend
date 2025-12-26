@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select";
 import { useNotificationSound } from "@/hooks/useNotificationSound";
 import { toast } from "@/hooks/use-toast";
-import { conversationsService, tabulationsService, contactsService, templatesService, Contact, Conversation as APIConversation, Tabulation, Template, getAuthToken } from "@/services/api";
+import { conversationsService, tabulationsService, contactsService, templatesService, linesService, usersService, Contact, Conversation as APIConversation, Tabulation, Template, getAuthToken } from "@/services/api";
 import { useRealtimeConnection, useRealtimeSubscription } from "@/hooks/useRealtimeConnection";
 import { WS_EVENTS, realtimeSocket } from "@/services/websocket";
 import { format } from "date-fns";
@@ -68,6 +68,13 @@ export default function Atendimento() {
   const [newContactCpf, setNewContactCpf] = useState("");
   const [newContactContract, setNewContactContract] = useState("");
   const [newContactTemplateId, setNewContactTemplateId] = useState<string>("");
+  const [availableLines, setAvailableLines] = useState<any[]>([]);
+  const [selectedLineId, setSelectedLineId] = useState<string>("");
+  const [isLoadingLines, setIsLoadingLines] = useState(false);
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
+  const [availableOperators, setAvailableOperators] = useState<any[]>([]);
+  const [selectedOperatorId, setSelectedOperatorId] = useState<string>("");
+  const [isLoadingOperators, setIsLoadingOperators] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { playMessageSound, playSuccessSound, playErrorSound } = useNotificationSound();
   const { isConnected: isRealtimeConnected } = useRealtimeConnection();
@@ -509,6 +516,28 @@ export default function Atendimento() {
     }
   }, [user?.segmentId]);
 
+  const loadAvailableLines = useCallback(async () => {
+    if (!user?.segmentId || !user?.oneToOneActive) return;
+    setIsLoadingLines(true);
+    try {
+      const data = await linesService.getBySegment(user.segmentId);
+      setAvailableLines(data);
+      // Selecionar primeira linha por padrão
+      if (data.length > 0 && !selectedLineId) {
+        setSelectedLineId(data[0].id.toString());
+      }
+    } catch (error) {
+      console.error('Error loading lines:', error);
+      toast({
+        title: "Erro ao carregar linhas",
+        description: "Não foi possível carregar as linhas disponíveis",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingLines(false);
+    }
+  }, [user?.segmentId, user?.oneToOneActive, selectedLineId]);
+
   useEffect(() => {
     loadConversations();
     loadTabulations();
@@ -787,10 +816,21 @@ export default function Atendimento() {
       return;
     }
 
-    if (!user?.lineId) {
+    // Validar que operador tem permissão para 1x1
+    if (!user?.oneToOneActive) {
       toast({
-        title: "Linha não atribuída",
-        description: "Você precisa ter uma linha atribuída para iniciar conversas",
+        title: "Sem permissão",
+        description: "Você não tem permissão para iniciar conversas 1x1",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validar que linha foi selecionada
+    if (!selectedLineId) {
+      toast({
+        title: "Linha não selecionada",
+        description: "Selecione uma linha para enviar o template",
         variant: "destructive",
       });
       return;
@@ -815,7 +855,7 @@ export default function Atendimento() {
         templateId: parseInt(newContactTemplateId),
         phone: newContactPhone.trim(),
         contactName: newContactName.trim(),
-        lineId: user.lineId,
+        lineId: parseInt(selectedLineId),
       });
 
       playSuccessSound();
@@ -1094,6 +1134,36 @@ export default function Atendimento() {
                         onChange={(e) => setNewContactContract(e.target.value)}
                       />
                     </div>
+                    {user?.oneToOneActive && (
+                      <div className="space-y-2">
+                        <Label htmlFor="line">Linha *</Label>
+                        <Select 
+                          value={selectedLineId} 
+                          onValueChange={setSelectedLineId}
+                          disabled={isLoadingLines}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={isLoadingLines ? "Carregando linhas..." : "Selecione uma linha"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableLines.length === 0 ? (
+                              <div className="p-2 text-sm text-muted-foreground">
+                                Nenhuma linha disponível
+                              </div>
+                            ) : (
+                              availableLines.map((line) => (
+                                <SelectItem key={line.id} value={line.id.toString()}>
+                                  {line.phone}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Selecione a linha que será usada para enviar o template
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="new-template">Template *</Label>
                       <Select 
@@ -1127,7 +1197,7 @@ export default function Atendimento() {
                     <Button variant="outline" onClick={() => setIsNewConversationOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button onClick={handleNewConversation} disabled={!newContactTemplateId}>
+                    <Button onClick={handleNewConversation} disabled={!newContactTemplateId || (user?.oneToOneActive && !selectedLineId)}>
                       Criar e Enviar Template
                     </Button>
                   </DialogFooter>
@@ -1285,12 +1355,22 @@ export default function Atendimento() {
                     </TooltipProvider>
                   )}
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      Tabular
+                <div className="flex gap-2">
+                  {(user?.role === 'supervisor' || user?.role === 'admin') && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setIsTransferDialogOpen(true)}
+                    >
+                      Transferir
                     </Button>
-                  </DropdownMenuTrigger>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Tabular
+                      </Button>
+                    </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-64">
                     <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
                       <div className="relative">
@@ -1392,6 +1472,59 @@ export default function Atendimento() {
                           Salvar
                         </>
                       )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Dialog de Transferência */}
+              <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Transferir Conversa</DialogTitle>
+                    <DialogDescription>
+                      Selecione o operador para quem deseja transferir esta conversa
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="operator">Operador *</Label>
+                      <Select 
+                        value={selectedOperatorId} 
+                        onValueChange={setSelectedOperatorId}
+                        disabled={isLoadingOperators}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={isLoadingOperators ? "Carregando operadores..." : "Selecione um operador"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableOperators.length === 0 ? (
+                            <div className="p-2 text-sm text-muted-foreground">
+                              Nenhum operador online disponível
+                            </div>
+                          ) : (
+                            availableOperators.map((operator) => (
+                              <SelectItem key={operator.id} value={operator.id.toString()}>
+                                {operator.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Apenas operadores online do mesmo segmento são exibidos
+                      </p>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => {
+                      setIsTransferDialogOpen(false);
+                      setSelectedOperatorId("");
+                    }}>
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleTransfer} disabled={!selectedOperatorId}>
+                      Transferir
                     </Button>
                   </DialogFooter>
                 </DialogContent>

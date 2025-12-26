@@ -160,6 +160,27 @@ export class ConversationsController {
     return this.conversationsService.recallContact(phone, user.id, userLine);
   }
 
+  @Post(':id/transfer')
+  @Roles(Role.supervisor, Role.admin)
+  @ApiOperation({ summary: 'Transferir conversa para outro operador' })
+  async transferConversation(
+    @Param('id') id: string,
+    @Body() body: { targetOperatorId: number },
+    @CurrentUser() user: any,
+  ) {
+    // Buscar a conversa para obter o contactPhone
+    const conversation = await this.conversationsService.findOne(+id);
+    if (!conversation) {
+      throw new Error('Conversa não encontrada');
+    }
+
+    return this.conversationsService.transferConversation(
+      conversation.contactPhone,
+      body.targetOperatorId,
+      user,
+    );
+  }
+
   @Delete(':id')
   @Roles(Role.admin, Role.supervisor, Role.digital)
   remove(@Param('id') id: string) {

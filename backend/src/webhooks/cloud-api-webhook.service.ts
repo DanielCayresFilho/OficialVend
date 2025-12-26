@@ -141,21 +141,32 @@ export class CloudApiWebhookService {
           if (value.messages && Array.isArray(value.messages)) {
             for (const message of value.messages) {
               // Verificar idempotência - evitar processar mensagem duplicada
-              // Verificar se já existe conversa recente (últimos 5 minutos) com mesmo timestamp
+              // Verificar se já existe conversa recente (últimos 2 minutos) com mesmo timestamp e telefone
               const messageTimestamp = parseInt(message.timestamp) * 1000;
               const existingConversation = await this.prisma.conversation.findFirst({
                 where: {
                   contactPhone: message.from,
                   datetime: {
-                    gte: new Date(messageTimestamp - 60000), // 1 minuto antes
-                    lte: new Date(messageTimestamp + 60000), // 1 minuto depois
+                    gte: new Date(messageTimestamp - 120000), // 2 minutos antes
+                    lte: new Date(messageTimestamp + 120000), // 2 minutos depois
                   },
+                  sender: 'contact', // Apenas mensagens recebidas
+                },
+                orderBy: {
+                  datetime: 'desc',
                 },
               });
 
+              // Se encontrou conversa muito recente (menos de 10 segundos de diferença), considerar duplicata
               if (existingConversation) {
-                this.logger.warn(`Mensagem ${message.id} (timestamp: ${message.timestamp}) já foi processada anteriormente, ignorando duplicata`);
-                continue;
+                const conversationTime = new Date(existingConversation.datetime).getTime();
+                const timeDiff = Math.abs(messageTimestamp - conversationTime);
+                
+                // Se a diferença for menor que 10 segundos, é provavelmente duplicata
+                if (timeDiff < 10000) {
+                  this.logger.warn(`Mensagem ${message.id} (timestamp: ${message.timestamp}) já foi processada anteriormente (diferença: ${timeDiff}ms), ignorando duplicata`);
+                  continue;
+                }
               }
 
               await this.processIncomingMessage(message, line, value.contacts);
@@ -306,21 +317,10 @@ export class CloudApiWebhookService {
         });
       }
 
-      // Distribuir mensagem entre operadores
-      const assignedOperatorId = await this.linesService.assignInboundMessageToOperator(line.id, from);
+      // Distribuir mensagem usando algoritmo inteligente
+      const finalOperatorId = await this.linesService.distributeInboundMessage(line.id, from);
 
-      // Se não encontrou operador, tentar qualquer operador online
-      let finalOperatorId = assignedOperatorId;
-      if (!finalOperatorId && line.operators && line.operators.length > 0) {
-        const anyOnlineOperator = line.operators.find(lo =>
-          lo.user.status === 'Online' && lo.user.role === 'operator'
-        );
-        if (anyOnlineOperator) {
-          finalOperatorId = anyOnlineOperator.userId;
-        }
-      }
-
-      // Se ainda não encontrou, adicionar à fila
+      // Se ainda não encontrou operador online, adicionar à fila
       if (!finalOperatorId) {
         await (this.prisma as any).messageQueue.create({
           data: {
@@ -436,4 +436,5 @@ export class CloudApiWebhookService {
     }
   }
 }
+
 

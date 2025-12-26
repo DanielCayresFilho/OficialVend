@@ -59,6 +59,19 @@ export class LinesController {
     return this.linesService.getAvailableLines(+segment);
   }
 
+  @Get('segment/:segmentId')
+  @Roles(Role.admin, Role.supervisor, Role.operator)
+  getBySegment(
+    @Param('segmentId') segmentId: string,
+    @CurrentUser() user: any,
+  ) {
+    // Validar que operador só pode ver linhas do próprio segmento
+    if (user.role === Role.operator && user.segment !== +segmentId) {
+      throw new Error('Você só pode acessar linhas do seu segmento');
+    }
+    return this.linesService.getAvailableLinesForSegment(+segmentId);
+  }
+
   @Get('activators-productivity')
   @Roles(Role.admin, Role.supervisor)
   getActivatorsProductivity() {

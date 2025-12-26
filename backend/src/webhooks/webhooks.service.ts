@@ -202,25 +202,9 @@ export class WebhooksService {
           console.log('✅ Contato adicionado à blocklist:', from);
         }
 
-        // Distribuir mensagem entre os operadores da linha (máximo 2)
-        const assignedOperatorId = await this.linesService.assignInboundMessageToOperator(line.id, from);
-        console.log(`📋 [Webhook] Mensagem de ${from} atribuída ao operador ${assignedOperatorId || 'nenhum (sem operadores online)'}`);
-
-        // Se não encontrou operador, tentar encontrar qualquer operador online da linha (mesmo que não tenha conversa ativa)
-        let finalOperatorId = assignedOperatorId;
-        if (!finalOperatorId && line.operators && line.operators.length > 0) {
-          // Buscar qualquer operador online da linha
-          const anyOnlineOperator = line.operators.find(lo => 
-            lo.user.status === 'Online' && lo.user.role === 'operator'
-          );
-          
-          if (anyOnlineOperator) {
-            finalOperatorId = anyOnlineOperator.userId;
-            console.log(`✅ [Webhook] Atribuindo mensagem a operador online disponível: ${anyOnlineOperator.user.name} (ID: ${finalOperatorId})`);
-          } else {
-            console.warn(`⚠️ [Webhook] Nenhum operador online encontrado na linha ${line.id} mesmo após verificação de fallback`);
-          }
-        }
+        // Distribuir mensagem usando algoritmo inteligente
+        const finalOperatorId = await this.linesService.distributeInboundMessage(line.id, from);
+        console.log(`📋 [Webhook] Mensagem de ${from} atribuída ao operador ${finalOperatorId || 'nenhum (sem operadores online)'}`);
 
         // Se ainda não encontrou operador online, adicionar à fila de mensagens
         if (!finalOperatorId) {
@@ -257,12 +241,21 @@ export class WebhooksService {
           return { status: 'queued', message: 'Mensagem adicionada à fila (nenhum operador online)' };
         }
 
+        // Buscar nome do operador se houver
+        let operatorName: string | null = null;
+        if (finalOperatorId) {
+          const operator = await this.prisma.user.findUnique({
+            where: { id: finalOperatorId },
+          });
+          operatorName = operator?.name || null;
+        }
+
         // Criar conversa
         const conversation = await this.conversationsService.create({
           contactName: contact.name,
           contactPhone: from,
           segment: line.segment,
-          userName: finalOperatorId ? line.operators.find(lo => lo.userId === finalOperatorId)?.user.name || null : null,
+          userName: operatorName,
           userLine: line.id,
           userId: finalOperatorId, // Operador específico que vai atender (ou null se não houver)
           message: messageText,

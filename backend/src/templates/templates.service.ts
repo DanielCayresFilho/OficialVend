@@ -302,8 +302,51 @@ export class TemplatesService {
     // Normalizar telefone (adicionar 55, remover caracteres especiais)
     const normalizedPhone = this.phoneValidationService.normalizePhone(dto.phone);
     
-    // Usar lineId do DTO ou do template
-    const lineId = dto.lineId || template.lineId;
+    // Se lineId foi fornecido (1x1 com escolha de linha), validar
+    let lineId = dto.lineId;
+    
+    if (lineId && user) {
+      // Validar que operador tem permissão para 1x1
+      if (!user.oneToOneActive) {
+        throw new BadRequestException('Você não tem permissão para iniciar conversas 1x1');
+      }
+
+      // Validar que a linha pertence ao segmento do operador
+      const selectedLine = await this.prisma.linesStock.findUnique({
+        where: { id: lineId },
+      });
+
+      if (!selectedLine) {
+        throw new NotFoundException('Linha não encontrada');
+      }
+
+      if (selectedLine.segment !== user.segment) {
+        throw new BadRequestException('Você só pode usar linhas do seu segmento');
+      }
+
+      if (selectedLine.lineStatus !== 'active') {
+        throw new BadRequestException('Linha não está ativa');
+      }
+    } else {
+      // Se não fornecido, usar lineId do template ou buscar linha do operador
+      lineId = dto.lineId || template.lineId;
+      
+      // Se ainda não tem, buscar linha do operador
+      if (!lineId && user) {
+        lineId = user.line;
+        if (!lineId) {
+          const lineOperator = await (this.prisma as any).lineOperator.findFirst({
+            where: { userId: user.id },
+            select: { lineId: true },
+          });
+          lineId = lineOperator?.lineId || null;
+        }
+      }
+    }
+    
+    if (!lineId) {
+      throw new BadRequestException('Linha não especificada e operador não possui linha atribuída');
+    }
     
     const line = await this.prisma.linesStock.findUnique({
       where: { id: lineId },

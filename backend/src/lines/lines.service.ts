@@ -524,10 +524,133 @@ export class LinesService {
     });
   }
 
+  /**
+   * Retorna linhas disponíveis para um segmento (sem necessidade de vinculação)
+   */
+  async getAvailableLinesForSegment(segmentId: number): Promise<any[]> {
+    return this.prisma.linesStock.findMany({
+      where: {
+        lineStatus: 'active',
+        segment: segmentId,
+      },
+      include: {
+        operators: {
+          include: {
+            user: true,
+          },
+        },
+      },
+      orderBy: {
+        phone: 'asc',
+      },
+    });
+  }
 
+  /**
+   * Distribui mensagem inbound de forma inteligente baseado em:
+   * - Tempo logado (mais tempo = prioridade)
+   * - Carga de trabalho (menos de 5 atendimentos = prioridade)
+   * - Balanceamento entre operadores
+   */
+  async distributeInboundMessage(lineId: number, contactPhone: string): Promise<number | null> {
+    // Buscar a linha e seu segmento
+    const line = await this.prisma.linesStock.findUnique({
+      where: { id: lineId },
+    });
+
+    if (!line || !line.segment) {
+      console.warn(`⚠️ [LinesService] Linha ${lineId} não encontrada ou sem segmento`);
+      return null;
+    }
+
+    // Buscar todos operadores online do segmento (não apenas vinculados à linha)
+    const segmentOperators = await this.prisma.user.findMany({
+      where: {
+        role: 'operator',
+        status: 'Online',
+        segment: line.segment,
+      },
+    });
+
+    if (segmentOperators.length === 0) {
+      console.log(`⚠️ [LinesService] Nenhum operador online no segmento ${line.segment}`);
+      return null;
+    }
+
+    // Verificar se já existe conversa ativa com algum operador
+    const existingConversation = await this.prisma.conversation.findFirst({
+      where: {
+        contactPhone,
+        userLine: lineId,
+        tabulation: null,
+        userId: { in: segmentOperators.map(op => op.id) },
+      },
+      orderBy: {
+        datetime: 'desc',
+      },
+    });
+
+    // Se já existe conversa ativa, manter com o mesmo operador
+    if (existingConversation?.userId) {
+      console.log(`✅ [LinesService] Mantendo conversa com operador existente: ${existingConversation.userId}`);
+      return existingConversation.userId;
+    }
+
+    // Calcular prioridade de cada operador
+    const operatorPriorities = await Promise.all(
+      segmentOperators.map(async (operator) => {
+        // Contar atendimentos em andamento (conversas não tabuladas)
+        const activeConversations = await this.prisma.conversation.count({
+          where: {
+            userId: operator.id,
+            tabulation: null,
+          },
+        });
+
+        // Obter tempo logado do WebSocketGateway
+        const connectionTime = this.websocketGateway.getOperatorConnectionTime(operator.id);
+        const timeLogged = connectionTime ? Date.now() - connectionTime : 0;
+
+        return {
+          operatorId: operator.id,
+          operatorName: operator.name,
+          activeConversations,
+          timeLogged,
+          hasCapacity: activeConversations < 5,
+        };
+      })
+    );
+
+    // Filtrar operadores com capacidade (menos de 5 atendimentos)
+    const operatorsWithCapacity = operatorPriorities.filter(op => op.hasCapacity);
+
+    let selectedOperator;
+
+    if (operatorsWithCapacity.length > 0) {
+      // Se há operadores com capacidade, escolher o com:
+      // 1. Menor número de atendimentos
+      // 2. Maior tempo logado (em caso de empate)
+      operatorsWithCapacity.sort((a, b) => {
+        if (a.activeConversations !== b.activeConversations) {
+          return a.activeConversations - b.activeConversations;
+        }
+        return b.timeLogged - a.timeLogged; // Mais tempo logado primeiro
+      });
+      selectedOperator = operatorsWithCapacity[0];
+    } else {
+      // Se todos têm 5+ atendimentos, escolher o com mais tempo logado
+      operatorPriorities.sort((a, b) => b.timeLogged - a.timeLogged);
+      selectedOperator = operatorPriorities[0];
+    }
+
+    console.log(`✅ [LinesService] Mensagem distribuída para ${selectedOperator.operatorName} (ID: ${selectedOperator.operatorId}) - ${selectedOperator.activeConversations} atendimentos, ${Math.round(selectedOperator.timeLogged / 1000 / 60)}min logado`);
+    
+    return selectedOperator.operatorId;
+  }
 
   // Distribuir mensagem inbound entre os operadores da linha (máximo 2)
   // Retorna o ID do operador que deve receber a mensagem
+  // DEPRECATED: Usar distributeInboundMessage ao invés deste método
   async assignInboundMessageToOperator(lineId: number, contactPhone: string): Promise<number | null> {
     // Buscar operadores vinculados à linha
     const lineOperators = await this.prisma.lineOperator.findMany({

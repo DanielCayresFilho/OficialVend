@@ -1,11 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
+import { WebsocketGateway } from '../websocket/websocket.gateway';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => WebsocketGateway))
+    private websocketGateway: WebsocketGateway,
+  ) {}
 
   async create(createConversationDto: CreateConversationDto) {
     return this.prisma.conversation.create({
@@ -213,5 +218,98 @@ export class ConversationsService {
     });
 
     return newConversation;
+  }
+
+  /**
+   * Transfere todas as conversas ativas de um contato para outro operador
+   * Usado por supervisores para redistribuir atendimentos
+   */
+  async transferConversation(
+    contactPhone: string,
+    targetOperatorId: number,
+    currentUser: any,
+  ) {
+    // Validar que usuário é supervisor
+    if (currentUser.role !== 'supervisor' && currentUser.role !== 'admin') {
+      throw new Error('Apenas supervisores podem transferir conversas');
+    }
+
+    // Buscar operador destino
+    const targetOperator = await this.prisma.user.findUnique({
+      where: { id: targetOperatorId },
+    });
+
+    if (!targetOperator || targetOperator.role !== 'operator') {
+      throw new Error('Operador destino não encontrado ou inválido');
+    }
+
+    // Validar que operador destino está no mesmo segmento do supervisor
+    if (currentUser.role === 'supervisor' && currentUser.segment !== targetOperator.segment) {
+      throw new Error('Operador destino deve estar no mesmo segmento');
+    }
+
+    // Buscar todas as conversas ativas do contato
+    const activeConversations = await this.prisma.conversation.findMany({
+      where: {
+        contactPhone,
+        tabulation: null, // Apenas conversas ativas
+      },
+    });
+
+    if (activeConversations.length === 0) {
+      throw new Error('Nenhuma conversa ativa encontrada para este contato');
+    }
+
+    // Buscar linha da primeira conversa (assumindo que todas são da mesma linha)
+    const firstConversation = activeConversations[0];
+    const lineId = firstConversation.userLine;
+
+    // Atualizar todas as conversas ativas para o novo operador
+    const updatedConversations = await this.prisma.$transaction(
+      activeConversations.map(conversation =>
+        this.prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            userId: targetOperatorId,
+            userName: targetOperator.name,
+          },
+        })
+      )
+    );
+
+    // Emitir eventos WebSocket para notificar ambos operadores
+    if (firstConversation.userId) {
+      // Notificar operador origem sobre a transferência
+      this.websocketGateway.emitToUser(firstConversation.userId, 'conversation-transferred', {
+        contactPhone,
+        toOperatorId: targetOperatorId,
+        toOperatorName: targetOperator.name,
+      });
+    }
+
+    // Notificar operador destino sobre a nova conversa
+    this.websocketGateway.emitToUser(targetOperatorId, 'conversation-received', {
+      contactPhone,
+      contactName: activeConversations[0]?.contactName || 'Contato',
+      fromOperatorId: firstConversation.userId,
+    });
+
+    // Emitir atualização de conversa para ambos
+    if (updatedConversations.length > 0) {
+      const updatedConversation = updatedConversations[0];
+      await this.websocketGateway.emitNewMessage({
+        ...updatedConversation,
+        contactPhone,
+      });
+    }
+
+    return {
+      success: true,
+      transferred: updatedConversations.length,
+      contactPhone,
+      fromOperatorId: firstConversation.userId,
+      toOperatorId: targetOperatorId,
+      toOperatorName: targetOperator.name,
+    };
   }
 }

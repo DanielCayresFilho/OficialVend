@@ -313,6 +313,9 @@ export interface CreateLineData {
 }
 
 export const linesService = {
+  getBySegment: async (segmentId: number) => {
+    return apiRequest<any[]>(`/lines/segment/${segmentId}`);
+  },
   list: async (params?: { segment?: number; lineStatus?: string; numberId?: string }): Promise<Line[]> => {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
     return apiRequest<Line[]>(`/lines${query}`);
@@ -590,6 +593,13 @@ export const conversationsService = {
   getByContact: async (phone: string, tabulated?: boolean): Promise<Conversation[]> => {
     const query = tabulated !== undefined ? `?tabulated=${tabulated}` : '';
     return apiRequest<Conversation[]>(`/conversations/contact/${encodeURIComponent(phone)}${query}`);
+  },
+
+  transfer: async (conversationId: number, targetOperatorId: number): Promise<{ success: boolean; transferred: number }> => {
+    return apiRequest(`/conversations/${conversationId}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify({ targetOperatorId }),
+    });
   },
 
   getById: async (id: number): Promise<Conversation> => {
