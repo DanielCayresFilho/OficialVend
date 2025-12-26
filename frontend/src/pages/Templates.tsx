@@ -29,9 +29,10 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Pencil, Trash2, Plus, Package } from "lucide-react";
+import { Pencil, Trash2, Plus, Package, Download } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { templatesService, segmentsService, Template as APITemplate, Segment } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Template {
   id: string;
@@ -64,6 +65,7 @@ const statusLabels: Record<string, string> = {
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export default function Templates() {
+  const { user } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [filters, setFilters] = useState({ search: '', segment: '', status: '' });
@@ -71,6 +73,7 @@ export default function Templates() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [formData, setFormData] = useState<{
@@ -260,6 +263,46 @@ export default function Templates() {
     }
   };
 
+  const handleDownloadCsv = async () => {
+    setIsDownloading(true);
+    try {
+      // Preparar filtros para o download
+      const downloadFilters: any = {};
+      if (filters.search) downloadFilters.search = filters.search;
+      if (filters.segment && filters.segment !== 'all' && filters.segment !== 'none') {
+        downloadFilters.segmentId = parseInt(filters.segment);
+      }
+      if (filters.status && filters.status !== 'all') {
+        downloadFilters.status = filters.status;
+      }
+
+      const blob = await templatesService.downloadCsv(downloadFilters);
+      
+      // Criar URL do blob e fazer download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `templates_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Download iniciado",
+        description: "O arquivo CSV está sendo baixado",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao baixar",
+        description: error instanceof Error ? error.message : "Erro ao baixar templates",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.name.trim()) {
       toast({
@@ -347,10 +390,31 @@ export default function Templates() {
               <h2 className="text-xl font-semibold text-foreground">Templates</h2>
               <p className="text-sm text-muted-foreground">Gerenciar templates de mensagens para campanhas</p>
             </div>
-            <Button onClick={handleAdd}>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Template
-            </Button>
+            <div className="flex gap-2">
+              {(user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'digital') && (
+                <Button 
+                  variant="outline" 
+                  onClick={handleDownloadCsv}
+                  disabled={isDownloading}
+                >
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Baixando...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Baixar CSV
+                    </>
+                  )}
+                </Button>
+              )}
+              <Button onClick={handleAdd}>
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Template
+              </Button>
+            </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

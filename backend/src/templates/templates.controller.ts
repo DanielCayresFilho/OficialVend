@@ -9,7 +9,11 @@ import {
   Query,
   UseGuards,
   ParseIntPipe,
+  Res,
+  Header,
 } from '@nestjs/common';
+import { Response } from 'express';
+import { Role } from '@prisma/client';
 import { TemplatesService } from './templates.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
@@ -121,6 +125,26 @@ export class TemplatesController {
   @Roles('admin', 'supervisor')
   getStats(@Param('id', ParseIntPipe) id: number) {
     return this.templatesService.getTemplateStats(id);
+  }
+
+  /**
+   * Exportação de Templates em CSV
+   */
+  @Get('export/csv')
+  @Roles(Role.admin, Role.supervisor, Role.digital)
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="templates.csv"')
+  async exportToCsv(@Query() filters?: any, @Res() res?: Response) {
+    const csv = await this.templatesService.exportToCsv(filters);
+    
+    // Adicionar BOM (Byte Order Mark) para UTF-8 para garantir encoding correto no Excel
+    const csvWithBom = '\ufeff' + csv;
+    
+    if (res) {
+      res.send(csvWithBom);
+    } else {
+      return csvWithBom;
+    }
   }
 }
 

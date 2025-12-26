@@ -981,6 +981,27 @@ export const templatesService = {
       body: JSON.stringify(data),
     });
   },
+
+  downloadCsv: async (params?: { search?: string; segmentId?: number; status?: string }): Promise<Blob> => {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
+    const url = `${API_BASE_URL}/templates/export/csv${query}`;
+    
+    const token = getAuthToken();
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Erro ao baixar templates');
+    }
+
+    return response.blob();
+  },
 };
 
 // ==================== DASHBOARD STATS ====================

@@ -624,5 +624,128 @@ export class TemplatesService {
       readRate: delivered > 0 ? ((read / delivered) * 100).toFixed(2) : '0',
     };
   }
+
+  /**
+   * Exporta templates para CSV
+   */
+  async exportToCsv(filters?: any): Promise<string> {
+    const where: any = {};
+
+    if (filters?.search) {
+      const search = filters.search.trim();
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { bodyText: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (filters?.segmentId) {
+      where.segmentId = parseInt(filters.segmentId);
+    }
+
+    if (filters?.status) {
+      where.status = filters.status;
+    }
+
+    const templates = await this.prisma.template.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Buscar nomes dos segmentos
+    const segmentIds = [...new Set(templates.map(t => t.segmentId).filter(Boolean))];
+    const segments = await this.prisma.segment.findMany({
+      where: { id: { in: segmentIds as number[] } },
+    });
+    const segmentMap = new Map(segments.map(s => [s.id, s.name]));
+
+    // Cabeçalho CSV
+    const headers = [
+      'ID',
+      'Nome',
+      'Idioma',
+      'Categoria',
+      'Segmento',
+      'Status',
+      'Namespace',
+      'Tipo de Cabeçalho',
+      'Conteúdo do Cabeçalho',
+      'Corpo do Template',
+      'Rodapé',
+      'Botões',
+      'Variáveis',
+      'Data de Criação',
+      'Data de Atualização',
+    ];
+
+    // Linhas CSV
+    const rows = templates.map(template => {
+      const segmentName = template.segmentId ? segmentMap.get(template.segmentId) || `Segmento ${template.segmentId}` : 'Global';
+      
+      // Parsear botões e variáveis para exibição
+      let buttonsStr = '';
+      let variablesStr = '';
+      
+      try {
+        if (template.buttons) {
+          const buttons = JSON.parse(template.buttons);
+          buttonsStr = Array.isArray(buttons) 
+            ? buttons.map((b: any) => `${b.type}:${b.text || b.url || ''}`).join('; ')
+            : template.buttons;
+        }
+      } catch {
+        buttonsStr = template.buttons || '';
+      }
+
+      try {
+        if (template.variables) {
+          const variables = JSON.parse(template.variables);
+          variablesStr = Array.isArray(variables) 
+            ? variables.join(', ')
+            : template.variables;
+        }
+      } catch {
+        variablesStr = template.variables || '';
+      }
+
+      return [
+        template.id.toString(),
+        this.escapeCsvField(template.name),
+        template.language || 'pt_BR',
+        template.category || 'MARKETING',
+        this.escapeCsvField(segmentName),
+        template.status || 'PENDING',
+        this.escapeCsvField(template.namespace || ''),
+        this.escapeCsvField(template.headerType || ''),
+        this.escapeCsvField(template.headerContent || ''),
+        this.escapeCsvField(template.bodyText || ''),
+        this.escapeCsvField(template.footerText || ''),
+        this.escapeCsvField(buttonsStr),
+        this.escapeCsvField(variablesStr),
+        template.createdAt.toISOString(),
+        template.updatedAt.toISOString(),
+      ];
+    });
+
+    // Combinar cabeçalho e linhas
+    const csvLines = [headers.join(','), ...rows.map(row => row.join(','))];
+    
+    return csvLines.join('\n');
+  }
+
+  /**
+   * Escapa campos CSV (adiciona aspas se necessário e escapa aspas duplas)
+   */
+  private escapeCsvField(field: string): string {
+    if (!field) return '';
+    
+    // Se contém vírgula, quebra de linha ou aspas, precisa ser envolvido em aspas
+    if (field.includes(',') || field.includes('\n') || field.includes('"')) {
+      // Escapar aspas duplas duplicando-as
+      return `"${field.replace(/"/g, '""')}"`;
+    }
+    
+    return field;
+  }
 }
 
