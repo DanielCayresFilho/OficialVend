@@ -1365,12 +1365,12 @@ export default function Atendimento() {
                       Transferir
                     </Button>
                   )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        Tabular
-                      </Button>
-                    </DropdownMenuTrigger>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      Tabular
+                    </Button>
+                  </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-64">
                     <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
                       <div className="relative">
@@ -1404,6 +1404,7 @@ export default function Atendimento() {
                     </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                </div>
               </div>
 
               {/* Modal de Edição de Contato */}
