@@ -141,32 +141,19 @@ export class CloudApiWebhookService {
           if (value.messages && Array.isArray(value.messages)) {
             for (const message of value.messages) {
               // Verificar idempotência - evitar processar mensagem duplicada
-              // Verificar se já existe conversa recente (últimos 2 minutos) com mesmo timestamp e telefone
-              const messageTimestamp = parseInt(message.timestamp) * 1000;
+              // Verificar se já existe conversa com o mesmo messageId (wamid) do WhatsApp
+              // O wamid é único para cada mensagem, então se já processamos, ignoramos
               const existingConversation = await this.prisma.conversation.findFirst({
                 where: {
-                  contactPhone: message.from,
-                  datetime: {
-                    gte: new Date(messageTimestamp - 120000), // 2 minutos antes
-                    lte: new Date(messageTimestamp + 120000), // 2 minutos depois
-                  },
+                  messageId: message.id, // Verificar pelo wamid único
                   sender: 'contact', // Apenas mensagens recebidas
-                },
-                orderBy: {
-                  datetime: 'desc',
                 },
               });
 
-              // Se encontrou conversa muito recente (menos de 10 segundos de diferença), considerar duplicata
+              // Se encontrou conversa com o mesmo wamid, é duplicata
               if (existingConversation) {
-                const conversationTime = new Date(existingConversation.datetime).getTime();
-                const timeDiff = Math.abs(messageTimestamp - conversationTime);
-                
-                // Se a diferença for menor que 10 segundos, é provavelmente duplicata
-                if (timeDiff < 10000) {
-                  this.logger.warn(`Mensagem ${message.id} (timestamp: ${message.timestamp}) já foi processada anteriormente (diferença: ${timeDiff}ms), ignorando duplicata`);
-                  continue;
-                }
+                this.logger.warn(`Mensagem ${message.id} (wamid) já foi processada anteriormente, ignorando duplicata`);
+                continue;
               }
 
               await this.processIncomingMessage(message, line, value.contacts);
@@ -365,6 +352,7 @@ export class CloudApiWebhookService {
         sender: 'contact',
         messageType,
         mediaUrl,
+        messageId: messageId, // Salvar wamid para evitar duplicatas
       });
 
       // Registrar evento

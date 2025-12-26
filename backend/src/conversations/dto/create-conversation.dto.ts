@@ -45,4 +45,8 @@ export class CreateConversationDto {
   @IsString()
   @IsOptional()
   mediaUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  messageId?: string; // WhatsApp Message ID (wamid) - usado para evitar duplicatas
 }

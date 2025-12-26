@@ -207,6 +207,7 @@ model Conversation {
   tabulation   Int?
   messageType  String    @default("text")
   mediaUrl     String?
+  messageId    String?   // WhatsApp Message ID (wamid) - usado para evitar duplicatas
   archived     Boolean   @default(false) // Se true, conversa foi arquivada
   archivedAt   DateTime? // Data de arquivamento
   createdAt    DateTime  @default(now())
@@ -220,6 +221,7 @@ model Conversation {
   @@index([datetime])
   @@index([archived, datetime])
   @@index([archivedAt])
+  @@index([messageId])
 }
 
 model Tag {
