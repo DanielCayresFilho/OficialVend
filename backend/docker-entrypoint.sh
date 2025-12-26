@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+# Regenerar Prisma Client para garantir que está sincronizado com o schema
+if [ -n "$DATABASE_URL" ]; then
+  echo "🔄 Regenerando Prisma Client..."
+  npx prisma generate
+fi
+
 # Executar seed apenas se não houver usuários no banco (se DATABASE_URL estiver definida)
 if [ -n "$DATABASE_URL" ]; then
   echo "🌱 Verificando se precisa executar seed..."
