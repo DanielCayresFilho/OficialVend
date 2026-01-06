@@ -244,12 +244,6 @@ export class ConversationsController {
     );
   }
 
-  @Delete(':id')
-  @Roles(Role.admin, Role.supervisor, Role.digital)
-  remove(@Param('id') id: string) {
-    return this.conversationsService.remove(+id);
-  }
-
   @Delete('contact/:phone')
   @Roles(Role.admin, Role.digital)
   @ApiOperation({ summary: 'Deletar todas as conversas de um contato (apenas admin e digital)' })
@@ -259,5 +253,11 @@ export class ConversationsController {
   ) {
     console.log(`🗑️ [DELETE /conversations/contact/:phone] Usuário: ${user.name} (${user.role}) deletando conversas do contato ${phone}`);
     return this.conversationsService.deleteByContactPhone(phone);
+  }
+
+  @Delete(':id')
+  @Roles(Role.admin, Role.supervisor, Role.digital)
+  remove(@Param('id') id: string) {
+    return this.conversationsService.remove(+id);
   }
 }
