@@ -334,6 +334,9 @@ model ControlPanel {
   autoMessageText        String? @db.Text // Texto da mensagem automática (ex: "Oi, ainda está aí?")
   autoMessageMaxAttempts Int     @default(1) // Quantas vezes enviar a mensagem (padrão 1)
 
+  // Filtro de conversas - Quantos dias de conversas aparecem no frontend
+  conversationFilterDays Int @default(3) // Conversas com mais de X dias são removidas do frontend (padrão: 3 dias)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

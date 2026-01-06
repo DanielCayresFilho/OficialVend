@@ -123,7 +123,7 @@ export class ConversationsService {
     });
   }
 
-  async findActiveConversations(userLine?: number, userId?: number) {
+  async findActiveConversations(userLine?: number, userId?: number, daysToFilter: number = 3) {
     const where: any = {
       tabulation: null,
     };
@@ -137,7 +137,16 @@ export class ConversationsService {
       where.userLine = userLine;
     }
 
-    // Retornar TODAS as mensagens não tabuladas (o frontend vai agrupar)
+    // Filtrar conversas com interação nos últimos X dias
+    // Calcular data limite (X dias atrás)
+    const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
+    const dateLimit = new Date(dateLimitMs);
+
+    where.datetime = {
+      gte: dateLimit,
+    };
+
+    // Retornar TODAS as mensagens não tabuladas dos últimos X dias (o frontend vai agrupar)
     // Usar select explícito para evitar problemas com campos que podem não existir no banco
     const conversations = await this.prisma.conversation.findMany({
       where,
@@ -169,7 +178,7 @@ export class ConversationsService {
     return conversations;
   }
 
-  async findTabulatedConversations(userLine?: number, userId?: number) {
+  async findTabulatedConversations(userLine?: number, userId?: number, daysToFilter: number = 3) {
     const where: any = {
       tabulation: { not: null },
     };
@@ -183,7 +192,15 @@ export class ConversationsService {
       where.userLine = userLine;
     }
 
-    // Retornar TODAS as mensagens tabuladas (o frontend vai agrupar)
+    // Filtrar conversas tabuladas dos últimos X dias
+    const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
+    const dateLimit = new Date(dateLimitMs);
+
+    where.datetime = {
+      gte: dateLimit,
+    };
+
+    // Retornar TODAS as mensagens tabuladas dos últimos X dias (o frontend vai agrupar)
     // Usar select explícito para evitar problemas com campos que podem não existir no banco
     const conversations = await this.prisma.conversation.findMany({
       where,

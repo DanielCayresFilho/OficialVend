@@ -140,6 +140,16 @@ export class UpdateControlPanelDto {
   @IsNumber()
   @IsOptional()
   autoMessageMaxAttempts?: number;
+
+  // Filtro de conversas - Quantos dias de conversas aparecem no frontend
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return 3;
+    const num = Number(value);
+    return isNaN(num) ? 3 : num;
+  })
+  @IsNumber()
+  @IsOptional()
+  conversationFilterDays?: number;
 }
 
 export class AddBlockPhraseDto {

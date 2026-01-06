@@ -47,38 +47,65 @@ export class ConversationsController {
 
   @Get('active')
   @Roles(Role.admin, Role.supervisor, Role.operator)
-  getActiveConversations(@CurrentUser() user: any) {
-    console.log(`📋 [GET /conversations/active] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}`);
-    
-    // Admin e digital veem TODAS as conversas ativas (sem filtro)
+  getActiveConversations(@CurrentUser() user: any, @Query('days') days?: string) {
+    const daysToFilter = days ? parseInt(days) : 3; // Padrão: 3 dias
+    console.log(`📋 [GET /conversations/active] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}, days: ${daysToFilter}`);
+
+    // Admin e digital veem TODAS as conversas ativas (sem filtro de tempo por padrão)
     if (user.role === Role.admin || user.role === Role.digital) {
-      return this.conversationsService.findAll({ tabulation: null });
+      // Para admin/digital, aplicar filtro de tempo apenas se especificado
+      const where: any = { tabulation: null };
+      if (days) {
+        const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
+        const dateLimit = new Date(dateLimitMs);
+        where.datetime = { gte: dateLimit };
+      }
+      return this.conversationsService.findAll(where);
     }
-    // Supervisor vê apenas conversas ativas do seu segmento
+    // Supervisor vê apenas conversas ativas do seu segmento (com filtro de tempo)
     if (user.role === Role.supervisor) {
-      return this.conversationsService.findAll({ segment: user.segment, tabulation: null });
+      const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
+      const dateLimit = new Date(dateLimitMs);
+      return this.conversationsService.findAll({
+        segment: user.segment,
+        tabulation: null,
+        datetime: { gte: dateLimit }
+      });
     }
     // Operador: buscar conversas apenas por userId (não por userLine)
     // Isso permite que as conversas continuem aparecendo mesmo se a linha foi banida
-    return this.conversationsService.findActiveConversations(undefined, user.id);
+    return this.conversationsService.findActiveConversations(undefined, user.id, daysToFilter);
   }
 
   @Get('tabulated')
   @Roles(Role.admin, Role.supervisor, Role.operator)
-  getTabulatedConversations(@CurrentUser() user: any) {
-    console.log(`📋 [GET /conversations/tabulated] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}`);
-    
-    // Admin e digital veem TODAS as conversas tabuladas (sem filtro)
+  getTabulatedConversations(@CurrentUser() user: any, @Query('days') days?: string) {
+    const daysToFilter = days ? parseInt(days) : 3; // Padrão: 3 dias
+    console.log(`📋 [GET /conversations/tabulated] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}, days: ${daysToFilter}`);
+
+    // Admin e digital veem TODAS as conversas tabuladas (sem filtro de tempo por padrão)
     if (user.role === Role.admin || user.role === Role.digital) {
-      return this.conversationsService.findAll({ tabulation: { not: null } });
+      const where: any = { tabulation: { not: null } };
+      if (days) {
+        const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
+        const dateLimit = new Date(dateLimitMs);
+        where.datetime = { gte: dateLimit };
+      }
+      return this.conversationsService.findAll(where);
     }
-    // Supervisor vê apenas conversas tabuladas do seu segmento
+    // Supervisor vê apenas conversas tabuladas do seu segmento (com filtro de tempo)
     if (user.role === Role.supervisor) {
-      return this.conversationsService.findAll({ segment: user.segment, tabulation: { not: null } });
+      const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
+      const dateLimit = new Date(dateLimitMs);
+      return this.conversationsService.findAll({
+        segment: user.segment,
+        tabulation: { not: null },
+        datetime: { gte: dateLimit }
+      });
     }
     // Operador: buscar conversas tabuladas apenas por userId (não por userLine)
     // Isso permite que as conversas tabuladas continuem aparecendo mesmo se a linha foi banida
-    return this.conversationsService.findTabulatedConversations(undefined, user.id);
+    return this.conversationsService.findTabulatedConversations(undefined, user.id, daysToFilter);
   }
 
   @Get('segment/:segment')
