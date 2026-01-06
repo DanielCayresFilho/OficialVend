@@ -53,6 +53,10 @@ interface ConversationGroup {
 
 export default function Atendimento() {
   const { user } = useAuth();
+
+  // API Base URL
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
   const [selectedConversation, setSelectedConversation] = useState<ConversationGroup | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -614,7 +618,7 @@ export default function Atendimento() {
         throw new Error('Não autenticado');
       }
 
-      const response = await fetch(`${API_URL}/media/upload`, {
+      const response = await fetch(`${API_BASE_URL}/media/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -628,7 +632,7 @@ export default function Atendimento() {
 
       const data = await response.json();
       const messageType = getMessageTypeFromMime(data.mimeType);
-      const mediaUrl = data.mediaUrl.startsWith('http') ? data.mediaUrl : `${API_URL}${data.mediaUrl}`;
+      const mediaUrl = data.mediaUrl.startsWith('http') ? data.mediaUrl : `${API_BASE_URL}${data.mediaUrl}`;
 
       // Upload de arquivo removido - no 1x1 apenas templates podem ser enviados
       toast({
@@ -898,7 +902,7 @@ export default function Atendimento() {
         throw new Error('Não autenticado');
       }
 
-      const response = await fetch(`${API_URL}/conversations/contact/${encodeURIComponent(selectedConversation.contactPhone)}`, {
+      const response = await fetch(`${API_BASE_URL}/conversations/contact/${encodeURIComponent(selectedConversation.contactPhone)}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -1722,12 +1726,12 @@ export default function Atendimento() {
                         {/* Renderizar mídia baseado no messageType */}
                         {msg.messageType === 'image' && msg.mediaUrl ? (
                           <div className="mb-2">
-                            <img 
-                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_URL}${msg.mediaUrl}`}
+                            <img
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_BASE_URL}${msg.mediaUrl}`}
                               alt="Imagem"
                               className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                               style={{ maxHeight: '300px' }}
-                              onClick={() => window.open(msg.mediaUrl!.startsWith('http') ? msg.mediaUrl! : `${API_URL}${msg.mediaUrl}`, '_blank')}
+                              onClick={() => window.open(msg.mediaUrl!.startsWith('http') ? msg.mediaUrl! : `${API_BASE_URL}${msg.mediaUrl}`, '_blank')}
                             />
                             {msg.message && !msg.message.includes('recebida') && (
                               <p className="text-sm mt-2">{msg.message}</p>
@@ -1735,21 +1739,21 @@ export default function Atendimento() {
                           </div>
                         ) : msg.messageType === 'audio' && msg.mediaUrl ? (
                           <div className="mb-2">
-                            <audio 
-                              controls 
+                            <audio
+                              controls
                               className="max-w-full"
-                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_URL}${msg.mediaUrl}`}
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_BASE_URL}${msg.mediaUrl}`}
                             >
                               Seu navegador não suporta áudio.
                             </audio>
                           </div>
                         ) : msg.messageType === 'video' && msg.mediaUrl ? (
                           <div className="mb-2">
-                            <video 
-                              controls 
+                            <video
+                              controls
                               className="max-w-full rounded-lg"
                               style={{ maxHeight: '300px' }}
-                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_URL}${msg.mediaUrl}`}
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_BASE_URL}${msg.mediaUrl}`}
                             >
                               Seu navegador não suporta vídeo.
                             </video>
@@ -1759,8 +1763,8 @@ export default function Atendimento() {
                           </div>
                         ) : msg.messageType === 'document' && msg.mediaUrl ? (
                           <div className="mb-2">
-                            <a 
-                              href={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_URL}${msg.mediaUrl}`}
+                            <a
+                              href={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_BASE_URL}${msg.mediaUrl}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center gap-2 text-sm underline hover:no-underline"
