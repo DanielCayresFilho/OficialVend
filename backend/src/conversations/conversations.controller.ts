@@ -10,6 +10,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma.service';
+import { getEmailDomain } from '../common/utils/email-domain.util';
 
 @Controller('conversations')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -46,14 +47,13 @@ export class ConversationsController {
   }
 
   @Get('active')
-  @Roles(Role.admin, Role.supervisor, Role.operator)
-  getActiveConversations(@CurrentUser() user: any, @Query('days') days?: string) {
+  @Roles(Role.admin, Role.supervisor, Role.operator, Role.digital)
+  async getActiveConversations(@CurrentUser() user: any, @Query('days') days?: string) {
     const daysToFilter = days ? parseInt(days) : 3; // Padrão: 3 dias
     console.log(`📋 [GET /conversations/active] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}, days: ${daysToFilter}`);
 
-    // Admin e digital veem TODAS as conversas ativas (sem filtro de tempo por padrão)
-    if (user.role === Role.admin || user.role === Role.digital) {
-      // Para admin/digital, aplicar filtro de tempo apenas se especificado
+    // Digital vê TODAS as conversas ativas sem restrição de domínio
+    if (user.role === Role.digital) {
       const where: any = { tabulation: null };
       if (days) {
         const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
@@ -62,29 +62,49 @@ export class ConversationsController {
       }
       return this.conversationsService.findAll(where);
     }
-    // Supervisor vê apenas conversas ativas do seu segmento (com filtro de tempo)
+
+    // Admin vê apenas conversas de operadores do mesmo domínio de email
+    if (user.role === Role.admin) {
+      const userDomain = getEmailDomain(user.email);
+      const where: any = { tabulation: null };
+      if (days) {
+        const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
+        const dateLimit = new Date(dateLimitMs);
+        where.datetime = { gte: dateLimit };
+      }
+
+      // Buscar apenas conversas de operadores do mesmo domínio
+      return this.conversationsService.findAllByEmailDomain(where, userDomain);
+    }
+
+    // Supervisor vê apenas conversas do seu segmento e mesmo domínio de email
     if (user.role === Role.supervisor) {
+      const userDomain = getEmailDomain(user.email);
       const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
       const dateLimit = new Date(dateLimitMs);
-      return this.conversationsService.findAll({
+      const where: any = {
         segment: user.segment,
         tabulation: null,
         datetime: { gte: dateLimit }
-      });
+      };
+
+      // Buscar apenas conversas de operadores do mesmo domínio
+      return this.conversationsService.findAllByEmailDomain(where, userDomain);
     }
+
     // Operador: buscar conversas apenas por userId (não por userLine)
     // Isso permite que as conversas continuem aparecendo mesmo se a linha foi banida
     return this.conversationsService.findActiveConversations(undefined, user.id, daysToFilter);
   }
 
   @Get('tabulated')
-  @Roles(Role.admin, Role.supervisor, Role.operator)
-  getTabulatedConversations(@CurrentUser() user: any, @Query('days') days?: string) {
+  @Roles(Role.admin, Role.supervisor, Role.operator, Role.digital)
+  async getTabulatedConversations(@CurrentUser() user: any, @Query('days') days?: string) {
     const daysToFilter = days ? parseInt(days) : 3; // Padrão: 3 dias
     console.log(`📋 [GET /conversations/tabulated] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}, days: ${daysToFilter}`);
 
-    // Admin e digital veem TODAS as conversas tabuladas (sem filtro de tempo por padrão)
-    if (user.role === Role.admin || user.role === Role.digital) {
+    // Digital vê TODAS as conversas tabuladas sem restrição de domínio
+    if (user.role === Role.digital) {
       const where: any = { tabulation: { not: null } };
       if (days) {
         const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
@@ -93,16 +113,32 @@ export class ConversationsController {
       }
       return this.conversationsService.findAll(where);
     }
-    // Supervisor vê apenas conversas tabuladas do seu segmento (com filtro de tempo)
+
+    // Admin vê apenas conversas tabuladas de operadores do mesmo domínio
+    if (user.role === Role.admin) {
+      const userDomain = getEmailDomain(user.email);
+      const where: any = { tabulation: { not: null } };
+      if (days) {
+        const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
+        const dateLimit = new Date(dateLimitMs);
+        where.datetime = { gte: dateLimit };
+      }
+      return this.conversationsService.findAllByEmailDomain(where, userDomain);
+    }
+
+    // Supervisor vê apenas conversas tabuladas do seu segmento e mesmo domínio
     if (user.role === Role.supervisor) {
+      const userDomain = getEmailDomain(user.email);
       const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
       const dateLimit = new Date(dateLimitMs);
-      return this.conversationsService.findAll({
+      const where: any = {
         segment: user.segment,
         tabulation: { not: null },
         datetime: { gte: dateLimit }
-      });
+      };
+      return this.conversationsService.findAllByEmailDomain(where, userDomain);
     }
+
     // Operador: buscar conversas tabuladas apenas por userId (não por userLine)
     // Isso permite que as conversas tabuladas continuem aparecendo mesmo se a linha foi banida
     return this.conversationsService.findTabulatedConversations(undefined, user.id, daysToFilter);
@@ -212,5 +248,16 @@ export class ConversationsController {
   @Roles(Role.admin, Role.supervisor, Role.digital)
   remove(@Param('id') id: string) {
     return this.conversationsService.remove(+id);
+  }
+
+  @Delete('contact/:phone')
+  @Roles(Role.admin, Role.digital)
+  @ApiOperation({ summary: 'Deletar todas as conversas de um contato (apenas admin e digital)' })
+  async deleteConversationByPhone(
+    @Param('phone') phone: string,
+    @CurrentUser() user: any,
+  ) {
+    console.log(`🗑️ [DELETE /conversations/contact/:phone] Usuário: ${user.name} (${user.role}) deletando conversas do contato ${phone}`);
+    return this.conversationsService.deleteByContactPhone(phone);
   }
 }

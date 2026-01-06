@@ -7,6 +7,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { getEmailDomain } from '../common/utils/email-domain.util';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -20,15 +22,32 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(Role.admin, Role.supervisor)
-  findAll(@Query() filters: any) {
-    return this.usersService.findAll(filters);
+  @Roles(Role.admin, Role.supervisor, Role.digital)
+  findAll(@Query() filters: any, @CurrentUser() user: any) {
+    // Digital vê todos os usuários
+    if (user.role === Role.digital) {
+      return this.usersService.findAll(filters);
+    }
+
+    // Admin e Supervisor veem apenas usuários do mesmo domínio de email
+    const userDomain = getEmailDomain(user.email);
+    return this.usersService.findAllByEmailDomain(filters, userDomain);
   }
 
   @Get('online-operators')
-  @Roles(Role.admin, Role.supervisor)
-  getOnlineOperators(@Query('segment') segment?: string) {
-    return this.usersService.getOnlineOperators(segment ? parseInt(segment) : undefined);
+  @Roles(Role.admin, Role.supervisor, Role.digital)
+  getOnlineOperators(@Query('segment') segment?: string, @CurrentUser() user?: any) {
+    // Digital vê todos
+    if (user?.role === Role.digital) {
+      return this.usersService.getOnlineOperators(segment ? parseInt(segment) : undefined);
+    }
+
+    // Admin e Supervisor veem apenas operadores do mesmo domínio
+    const userDomain = getEmailDomain(user.email);
+    return this.usersService.getOnlineOperatorsByEmailDomain(
+      segment ? parseInt(segment) : undefined,
+      userDomain
+    );
   }
 
   @Get(':id')

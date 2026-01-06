@@ -65,6 +65,53 @@ export class UsersService {
     });
   }
 
+  /**
+   * Buscar usuários filtrando por domínio de email
+   * Usado por admin e supervisor para ver apenas usuários do mesmo domínio
+   */
+  async findAllByEmailDomain(filters: any, emailDomain: string) {
+    const { search, ...validFilters } = filters || {};
+
+    const baseWhere = {
+      email: {
+        endsWith: `@${emailDomain}`,
+      },
+    };
+
+    const where = search
+      ? {
+          ...validFilters,
+          ...baseWhere,
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {
+          ...validFilters,
+          ...baseWhere,
+        };
+
+    return this.prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        segment: true,
+        line: true,
+        status: true,
+        oneToOneActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
   async findOne(id: number) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -142,6 +189,22 @@ export class UsersService {
       where: {
         role: 'operator',
         status: 'Online',
+        ...(segment && { segment }),
+      },
+    });
+  }
+
+  /**
+   * Buscar operadores online filtrando por domínio de email
+   */
+  async getOnlineOperatorsByEmailDomain(segment: number | undefined, emailDomain: string) {
+    return this.prisma.user.findMany({
+      where: {
+        role: 'operator',
+        status: 'Online',
+        email: {
+          endsWith: `@${emailDomain}`,
+        },
         ...(segment && { segment }),
       },
     });

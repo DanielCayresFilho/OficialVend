@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Send, FileText, MessageCircle, ArrowRight, ArrowLeft, Loader2, Wifi, WifiOff, Edit, UserCheck, X, Check, Phone, AlertTriangle, RefreshCw, Search, Menu, Download } from "lucide-react";
+import { Plus, Send, FileText, MessageCircle, ArrowRight, ArrowLeft, Loader2, Wifi, WifiOff, Edit, UserCheck, X, Check, Phone, AlertTriangle, RefreshCw, Search, Menu, Download, Trash2 } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -109,6 +109,9 @@ export default function Atendimento() {
   
   // Estado para controlar visibilidade da sidebar em mobile
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Estado para deletar conversa
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
 
   // Subscribe to new messages in real-time
   useRealtimeSubscription(WS_EVENTS.NEW_MESSAGE, (data: any) => {
@@ -876,6 +879,64 @@ export default function Atendimento() {
     }
   }, [selectedConversation, selectedOperatorId, playSuccessSound, playErrorSound, loadConversations, user]);
 
+  // Função para deletar conversa (apenas admin e digital)
+  const handleDeleteConversation = useCallback(async () => {
+    if (!selectedConversation) return;
+    if (isDeletingConversation) return;
+
+    // Confirmação antes de deletar
+    const confirmed = window.confirm(
+      `Tem certeza que deseja deletar TODAS as mensagens do contato ${selectedConversation.contactName} (${selectedConversation.contactPhone})?\n\nEsta ação não pode ser desfeita!`
+    );
+
+    if (!confirmed) return;
+
+    setIsDeletingConversation(true);
+    try {
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error('Não autenticado');
+      }
+
+      const response = await fetch(`${API_URL}/conversations/contact/${encodeURIComponent(selectedConversation.contactPhone)}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao deletar conversa');
+      }
+
+      const result = await response.json();
+
+      playSuccessSound();
+      toast({
+        title: "Conversa deletada",
+        description: `${result.deleted} mensagens deletadas com sucesso`,
+      });
+
+      // Remover conversa da lista
+      setConversations(prev => prev.filter(c => c.contactPhone !== selectedConversation.contactPhone));
+      setSelectedConversation(null);
+
+      // Recarregar conversas
+      setTimeout(() => {
+        loadConversations();
+      }, 500);
+    } catch (error) {
+      playErrorSound();
+      toast({
+        title: "Erro ao deletar",
+        description: error instanceof Error ? error.message : "Erro ao deletar conversa",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingConversation(false);
+    }
+  }, [selectedConversation, isDeletingConversation, playSuccessSound, playErrorSound, loadConversations]);
+
   const handleNewConversation = useCallback(async () => {
     if (!newContactName.trim() || !newContactPhone.trim()) {
       toast({
@@ -1430,6 +1491,28 @@ export default function Atendimento() {
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>Baixar conversa em PDF</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {(user?.role === 'admin' || user?.role === 'digital') && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={handleDeleteConversation}
+                            disabled={isDeletingConversation}
+                          >
+                            {isDeletingConversation ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Deletar conversa</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   )}

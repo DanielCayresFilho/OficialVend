@@ -85,6 +85,73 @@ export class ConversationsService {
     });
   }
 
+  /**
+   * Buscar conversas filtrando por domínio de email dos operadores
+   * Usado por admin e supervisor para ver apenas conversas do mesmo domínio
+   */
+  async findAllByEmailDomain(filters: any, emailDomain: string) {
+    const { search, ...validFilters } = filters || {};
+
+    // Buscar IDs de usuários (operadores) com o mesmo domínio de email
+    const usersWithSameDomain = await this.prisma.user.findMany({
+      where: {
+        email: {
+          endsWith: `@${emailDomain}`,
+        },
+      },
+      select: { id: true },
+    });
+
+    const userIds = usersWithSameDomain.map(u => u.id);
+
+    // Se não houver usuários do domínio, retornar vazio
+    if (userIds.length === 0) {
+      return [];
+    }
+
+    // Aplicar filtro de userId na busca de conversas
+    const where = search
+      ? {
+          ...validFilters,
+          userId: { in: userIds }, // Filtrar por operadores do mesmo domínio
+          OR: [
+            { contactName: { contains: search, mode: 'insensitive' } },
+            { contactPhone: { contains: search } },
+            { message: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {
+          ...validFilters,
+          userId: { in: userIds }, // Filtrar por operadores do mesmo domínio
+        };
+
+    return this.prisma.conversation.findMany({
+      where,
+      orderBy: {
+        datetime: 'desc',
+      },
+      select: {
+        id: true,
+        contactName: true,
+        contactPhone: true,
+        segment: true,
+        userName: true,
+        userLine: true,
+        userId: true,
+        message: true,
+        sender: true,
+        datetime: true,
+        tabulation: true,
+        messageType: true,
+        mediaUrl: true,
+        archived: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
   async findByContactPhone(contactPhone: string, tabulated: boolean = false, userLine?: number) {
     const where: any = {
       contactPhone,
@@ -310,6 +377,23 @@ export class ConversationsService {
     return this.prisma.conversation.delete({
       where: { id },
     });
+  }
+
+  /**
+   * Deletar todas as conversas de um contato (por telefone)
+   * Usado por admin e digital para limpar conversas
+   */
+  async deleteByContactPhone(contactPhone: string) {
+    const result = await this.prisma.conversation.deleteMany({
+      where: { contactPhone },
+    });
+
+    return {
+      success: true,
+      deleted: result.count,
+      contactPhone,
+      message: `${result.count} conversas deletadas com sucesso`,
+    };
   }
 
   async getConversationsBySegment(segment: number, tabulated: boolean = false) {
