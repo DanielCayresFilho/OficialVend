@@ -56,11 +56,11 @@ export class TemplatesController {
     return this.templatesService.findBySegment(segmentId);
   }
 
-  // Mantido para compatibilidade
+  // Buscar templates por linha (retorna templates do segmento da linha + globais)
   @Get('line/:lineId')
   @Roles('admin', 'supervisor', 'operator')
   findByLine(@Param('lineId', ParseIntPipe) lineId: number) {
-    return this.templatesService.findByLine(lineId);
+    return this.templatesService.findByLineAndSegment(lineId);
   }
 
   @Patch(':id')

@@ -523,8 +523,27 @@ export default function Atendimento() {
     }
   }, [user?.segmentId]);
 
+  // Carregar templates filtrados pela linha selecionada
+  const loadTemplatesByLine = useCallback(async (lineId: string) => {
+    if (!lineId) return;
+    setIsLoadingTemplates(true);
+    try {
+      const data = await templatesService.getByLine(parseInt(lineId));
+      setTemplates(data.filter(t => t.status === 'APPROVED')); // Apenas templates aprovados
+    } catch (error) {
+      console.error('Error loading templates by line:', error);
+      toast({
+        title: "Erro ao carregar templates",
+        description: "Não foi possível carregar os templates desta linha",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  }, []);
+
   const loadAvailableLines = useCallback(async () => {
-    if (!user?.segmentId || !user?.oneToOneActive) return;
+    if (!user?.segmentId) return;
     setIsLoadingLines(true);
     try {
       const data = await linesService.getBySegment(user.segmentId);
@@ -543,13 +562,20 @@ export default function Atendimento() {
     } finally {
       setIsLoadingLines(false);
     }
-  }, [user?.segmentId, user?.oneToOneActive, selectedLineId]);
+  }, [user?.segmentId, selectedLineId]);
 
   useEffect(() => {
     loadConversations();
     loadTabulations();
     loadTemplates();
   }, [loadConversations, loadTabulations, loadTemplates]);
+
+  // Carregar templates quando linha mudar no modal de nova conversa
+  useEffect(() => {
+    if (selectedLineId && isNewConversationOpen) {
+      loadTemplatesByLine(selectedLineId);
+    }
+  }, [selectedLineId, isNewConversationOpen, loadTemplatesByLine]);
 
   // Detectar desconexão do WebSocket e sugerir atualização
   useEffect(() => {
@@ -749,6 +775,17 @@ export default function Atendimento() {
       return;
     }
 
+    // Obter linha da conversa atual
+    const conversationLine = selectedConversation.messages.find(m => m.userLine)?.userLine;
+    if (!conversationLine) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível identificar a linha desta conversa",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSending(true);
 
     try {
@@ -757,7 +794,7 @@ export default function Atendimento() {
         templateId: parseInt(selectedTemplateId),
         phone: selectedConversation.contactPhone,
         contactName: selectedConversation.contactName,
-        lineId: user?.lineId,
+        lineId: conversationLine,
       });
 
       playSuccessSound();
@@ -765,7 +802,7 @@ export default function Atendimento() {
         title: "Template enviado",
         description: "Template enviado com sucesso",
       });
-      
+
       setSelectedTemplateId(""); // Limpar seleção
       await loadConversations();
     } catch (error) {
@@ -778,7 +815,7 @@ export default function Atendimento() {
     } finally {
       setIsSending(false);
     }
-  }, [selectedTemplateId, selectedConversation, isSending, user, playSuccessSound, playErrorSound, loadConversations]);
+  }, [selectedTemplateId, selectedConversation, isSending, playSuccessSound, playErrorSound, loadConversations]);
 
   const handleTabulate = useCallback(async (tabulationId: number) => {
     if (!selectedConversation) return;
@@ -951,6 +988,15 @@ export default function Atendimento() {
       return;
     }
 
+    if (!selectedLineId) {
+      toast({
+        title: "Linha obrigatória",
+        description: "Selecione uma linha para enviar o template",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!newContactTemplateId) {
       toast({
         title: "Template obrigatório",
@@ -965,16 +1011,6 @@ export default function Atendimento() {
       toast({
         title: "Sem permissão",
         description: "Você não tem permissão para iniciar conversas 1x1",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Validar que linha foi selecionada
-    if (!selectedLineId) {
-      toast({
-        title: "Linha não selecionada",
-        description: "Selecione uma linha para enviar o template",
         variant: "destructive",
       });
       return;
@@ -1271,45 +1307,43 @@ export default function Atendimento() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="contract">Contrato</Label>
-                      <Input 
-                        id="contract" 
+                      <Input
+                        id="contract"
                         placeholder="Número do contrato"
                         value={newContactContract}
                         onChange={(e) => setNewContactContract(e.target.value)}
                       />
                     </div>
-                    {user?.oneToOneActive && (
-                      <div className="space-y-2">
-                        <Label htmlFor="line">Linha *</Label>
-                        <Select 
-                          value={selectedLineId} 
-                          onValueChange={setSelectedLineId}
-                          disabled={isLoadingLines}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={isLoadingLines ? "Carregando linhas..." : "Selecione uma linha"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableLines.length === 0 ? (
-                              <div className="p-2 text-sm text-muted-foreground">
-                                Nenhuma linha disponível
-                              </div>
-                            ) : (
-                              availableLines.map((line) => (
-                                <SelectItem key={line.id} value={line.id.toString()}>
-                                  {line.phone}
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          Selecione a linha que será usada para enviar o template
-                        </p>
-                      </div>
-                    )}
                     <div className="space-y-2">
-                      <Label htmlFor="new-template">Template *</Label>
+                      <Label htmlFor="line">Linha * (escolha a linha do seu segmento)</Label>
+                      <Select
+                        value={selectedLineId}
+                        onValueChange={setSelectedLineId}
+                        disabled={isLoadingLines}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={isLoadingLines ? "Carregando linhas..." : "Selecione uma linha"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableLines.length === 0 ? (
+                            <div className="p-2 text-sm text-muted-foreground">
+                              Nenhuma linha disponível
+                            </div>
+                          ) : (
+                            availableLines.map((line) => (
+                              <SelectItem key={line.id} value={line.id.toString()}>
+                                {line.phone}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Escolha a linha que será usada para enviar a mensagem. Os templates disponíveis serão filtrados pela linha escolhida.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-template">Template * (apenas templates da linha selecionada)</Label>
                       <Select 
                         value={newContactTemplateId} 
                         onValueChange={setNewContactTemplateId}
@@ -1333,7 +1367,7 @@ export default function Atendimento() {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        O template será enviado automaticamente ao criar a conversa
+                        A primeira mensagem deve SEMPRE ser um template. Ele será enviado automaticamente ao criar a conversa.
                       </p>
                     </div>
                   </div>
@@ -1341,7 +1375,7 @@ export default function Atendimento() {
                     <Button variant="outline" onClick={() => setIsNewConversationOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button onClick={handleNewConversation} disabled={!newContactTemplateId || (user?.oneToOneActive && !selectedLineId)}>
+                    <Button onClick={handleNewConversation} disabled={!newContactTemplateId || !selectedLineId}>
                       Criar e Enviar Template
                     </Button>
                   </DialogFooter>
@@ -1774,7 +1808,18 @@ export default function Atendimento() {
                             </a>
                           </div>
                         ) : (
-                          <p className="text-sm">{msg.message}</p>
+                          <div>
+                            {msg.messageType === 'template' && (
+                              <div className={cn(
+                                "text-xs font-medium mb-1 flex items-center gap-1",
+                                msg.sender === 'contact' ? "text-muted-foreground" : "text-primary-foreground/80"
+                              )}>
+                                <FileText className="h-3 w-3" />
+                                Template
+                              </div>
+                            )}
+                            <p className="text-sm">{msg.message}</p>
+                          </div>
                         )}
                         <p className={cn(
                           "text-xs mt-1",

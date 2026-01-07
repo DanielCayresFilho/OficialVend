@@ -116,6 +116,36 @@ export class TemplatesService {
     }));
   }
 
+  async findByLineAndSegment(lineId: number) {
+    // Buscar a linha para obter o segmento
+    const line = await this.prisma.linesStock.findUnique({
+      where: { id: lineId },
+      select: { segment: true },
+    });
+
+    if (!line) {
+      throw new NotFoundException('Linha não encontrada');
+    }
+
+    // Retornar templates do segmento da linha + templates globais
+    const templates = await this.prisma.template.findMany({
+      where: {
+        OR: [
+          { segmentId: line.segment },
+          { segmentId: null },  // Templates globais
+        ],
+        status: 'APPROVED',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return templates.map(template => ({
+      ...template,
+      buttons: template.buttons ? JSON.parse(template.buttons) : null,
+      variables: template.variables ? JSON.parse(template.variables) : null,
+    }));
+  }
+
   async findOne(id: number) {
     const template = await this.prisma.template.findUnique({
       where: { id },
@@ -298,14 +328,19 @@ export class TemplatesService {
    */
   async sendTemplate(dto: SendTemplateDto, user?: any) {
     const template = await this.findOne(dto.templateId);
-    
+
     // Normalizar telefone (adicionar 55, remover caracteres especiais)
     const normalizedPhone = this.phoneValidationService.normalizePhone(dto.phone);
-    
-    // Se lineId foi fornecido (1x1 com escolha de linha), validar
-    let lineId = dto.lineId;
-    
-    if (lineId && user) {
+
+    // LineId agora é obrigatório
+    const lineId = dto.lineId;
+
+    if (!lineId) {
+      throw new BadRequestException('Linha é obrigatória para envio de template');
+    }
+
+    // Validações para operadores
+    if (user) {
       // Validar que operador tem permissão para 1x1
       if (!user.oneToOneActive) {
         throw new BadRequestException('Você não tem permissão para iniciar conversas 1x1');
@@ -327,25 +362,6 @@ export class TemplatesService {
       if (selectedLine.lineStatus !== 'active') {
         throw new BadRequestException('Linha não está ativa');
       }
-    } else {
-      // Se não fornecido, usar lineId do template ou buscar linha do operador
-      lineId = dto.lineId || template.lineId;
-      
-      // Se ainda não tem, buscar linha do operador
-      if (!lineId && user) {
-        lineId = user.line;
-        if (!lineId) {
-          const lineOperator = await (this.prisma as any).lineOperator.findFirst({
-            where: { userId: user.id },
-            select: { lineId: true },
-          });
-          lineId = lineOperator?.lineId || null;
-        }
-      }
-    }
-    
-    if (!lineId) {
-      throw new BadRequestException('Linha não especificada e operador não possui linha atribuída');
     }
     
     const line = await this.prisma.linesStock.findUnique({
@@ -423,7 +439,7 @@ export class TemplatesService {
           userName: operator?.name || null,
           userLine: lineId,
           userId: operator?.id || null, // IMPORTANTE: userId é necessário para filtrar conversas do operador
-          message: `[TEMPLATE: ${template.name}] ${messageText}`,
+          message: `template: ${messageText}`,
           sender: 'operator',
           messageType: 'template',
         },

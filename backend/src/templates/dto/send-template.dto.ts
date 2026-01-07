@@ -41,8 +41,8 @@ export class SendTemplateDto {
     return isNaN(num) ? undefined : num;
   })
   @IsNumber()
-  @IsOptional()
-  lineId?: number;
+  @IsNotEmpty()
+  lineId: number;
 }
 
 export class SendTemplateMassiveDto {

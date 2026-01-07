@@ -932,6 +932,10 @@ export const templatesService = {
     return apiRequest<Template[]>(`/templates/segment/${segmentId}`);
   },
 
+  getByLine: async (lineId: number): Promise<Template[]> => {
+    return apiRequest<Template[]>(`/templates/line/${lineId}`);
+  },
+
   create: async (data: CreateTemplateData): Promise<Template> => {
     return apiRequest<Template>('/templates', {
       method: 'POST',
@@ -959,7 +963,7 @@ export const templatesService = {
     phone: string;
     contactName?: string;
     variables?: Array<{ key: string; value: string }>;
-    lineId?: number;
+    lineId: number;
   }): Promise<{ success: boolean; messageId: string }> => {
     return apiRequest('/templates/send', {
       method: 'POST',
