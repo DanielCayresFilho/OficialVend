@@ -252,7 +252,7 @@ export default function Atendimento() {
         });
       }
     }
-  }, [playSuccessSound, isNewConversationOpen, closeNewConversationModal]);
+  }, [playSuccessSound, isNewConversationOpen]);
 
   // Subscribe to message errors (bloqueios CPC, repescagem, etc)
   useRealtimeSubscription('message-error', (data: any) => {
@@ -543,9 +543,9 @@ export default function Atendimento() {
     try {
       const data = await linesService.getBySegment(user.segmentId);
       setAvailableLines(data);
-      // Selecionar primeira linha por padrão
-      if (data.length > 0 && !selectedLineId) {
-        setSelectedLineId(data[0].id.toString());
+      // Selecionar primeira linha por padrão se não tiver nenhuma selecionada
+      if (data.length > 0) {
+        setSelectedLineId(prev => prev || data[0].id.toString());
       }
     } catch (error) {
       console.error('Error loading lines:', error);
@@ -557,7 +557,7 @@ export default function Atendimento() {
     } finally {
       setIsLoadingLines(false);
     }
-  }, [user?.segmentId, selectedLineId]);
+  }, [user?.segmentId]);
 
   useEffect(() => {
     loadConversations();
@@ -567,17 +567,53 @@ export default function Atendimento() {
 
   // Carregar linhas disponíveis quando o modal abrir
   useEffect(() => {
-    if (isNewConversationOpen) {
-      loadAvailableLines();
+    if (isNewConversationOpen && user?.segmentId) {
+      const loadLines = async () => {
+        setIsLoadingLines(true);
+        try {
+          const data = await linesService.getBySegment(user.segmentId);
+          setAvailableLines(data);
+          // Selecionar primeira linha por padrão se não tiver nenhuma selecionada
+          if (data.length > 0 && !selectedLineId) {
+            setSelectedLineId(data[0].id.toString());
+          }
+        } catch (error) {
+          console.error('Error loading lines:', error);
+          toast({
+            title: "Erro ao carregar linhas",
+            description: "Não foi possível carregar as linhas disponíveis",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoadingLines(false);
+        }
+      };
+      loadLines();
     }
-  }, [isNewConversationOpen, loadAvailableLines]);
+  }, [isNewConversationOpen, user?.segmentId, selectedLineId]);
 
   // Carregar templates quando linha mudar no modal de nova conversa
   useEffect(() => {
     if (selectedLineId && isNewConversationOpen) {
-      loadTemplatesByLine(selectedLineId);
+      const loadTemplates = async () => {
+        setIsLoadingTemplates(true);
+        try {
+          const data = await templatesService.getByLine(parseInt(selectedLineId));
+          setTemplates(data.filter(t => t.status === 'APPROVED'));
+        } catch (error) {
+          console.error('Error loading templates by line:', error);
+          toast({
+            title: "Erro ao carregar templates",
+            description: "Não foi possível carregar os templates desta linha",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoadingTemplates(false);
+        }
+      };
+      loadTemplates();
     }
-  }, [selectedLineId, isNewConversationOpen, loadTemplatesByLine]);
+  }, [selectedLineId, isNewConversationOpen]);
 
   // Detectar desconexão do WebSocket e sugerir atualização
   useEffect(() => {
@@ -1087,7 +1123,7 @@ export default function Atendimento() {
         variant: "destructive",
       });
     }
-  }, [newContactName, newContactPhone, newContactCpf, newContactContract, newContactTemplateId, selectedLineId, user, playSuccessSound, playErrorSound, loadConversations, closeNewConversationModal]);
+  }, [newContactName, newContactPhone, newContactCpf, newContactContract, newContactTemplateId, selectedLineId, user, playSuccessSound, playErrorSound, loadConversations]);
 
   const formatTime = (datetime: string) => {
     try {
