@@ -70,6 +70,7 @@ export class AuthService {
         segment: user.segment,
         line: user.line,
         status: user.role === 'operator' ? 'Online' : user.status,
+        oneToOneActive: user.oneToOneActive,
       },
     };
   }

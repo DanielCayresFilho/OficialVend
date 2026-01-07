@@ -58,6 +58,7 @@ export interface LoginResponse {
     segment: number | null;
     line: number | null;
     status: 'Online' | 'Offline';
+    oneToOneActive?: boolean;
   };
 }
 

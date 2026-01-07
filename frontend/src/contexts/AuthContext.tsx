@@ -11,6 +11,7 @@ export interface User {
   segmentId?: number;
   lineId?: number;
   isOnline: boolean;
+  oneToOneActive?: boolean;
 }
 
 interface AuthState {
@@ -53,6 +54,7 @@ const mapUser = (apiUser: LoginResponse['user']): User => ({
   segmentId: apiUser.segment ?? undefined,
   lineId: apiUser.line ?? undefined,
   isOnline: apiUser.status === 'Online',
+  oneToOneActive: apiUser.oneToOneActive ?? true, // Default true para backward compatibility
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
