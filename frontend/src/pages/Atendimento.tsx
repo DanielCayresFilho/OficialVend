@@ -200,12 +200,7 @@ export default function Atendimento() {
       
       // Se estava criando nova conversa, fechar dialog e limpar campos
       if (isNewConversationOpen) {
-        setIsNewConversationOpen(false);
-        setNewContactName("");
-        setNewContactPhone("");
-        setNewContactCpf("");
-        setNewContactContract("");
-        // Mensagem removida - usar templates
+        closeNewConversationModal();
       }
       
       setConversations(prev => {
@@ -257,7 +252,7 @@ export default function Atendimento() {
         });
       }
     }
-  }, [playSuccessSound, isNewConversationOpen]); // Adicionar dependências
+  }, [playSuccessSound, isNewConversationOpen, closeNewConversationModal]);
 
   // Subscribe to message errors (bloqueios CPC, repescagem, etc)
   useRealtimeSubscription('message-error', (data: any) => {
@@ -569,6 +564,13 @@ export default function Atendimento() {
     loadTabulations();
     loadTemplates();
   }, [loadConversations, loadTabulations, loadTemplates]);
+
+  // Carregar linhas disponíveis quando o modal abrir
+  useEffect(() => {
+    if (isNewConversationOpen) {
+      loadAvailableLines();
+    }
+  }, [isNewConversationOpen, loadAvailableLines]);
 
   // Carregar templates quando linha mudar no modal de nova conversa
   useEffect(() => {
@@ -978,6 +980,17 @@ export default function Atendimento() {
     }
   }, [selectedConversation, isDeletingConversation, playSuccessSound, playErrorSound, loadConversations]);
 
+  // Função para fechar modal e limpar estados
+  const closeNewConversationModal = useCallback(() => {
+    setIsNewConversationOpen(false);
+    setNewContactName("");
+    setNewContactPhone("");
+    setNewContactCpf("");
+    setNewContactContract("");
+    setNewContactTemplateId("");
+    setSelectedLineId("");
+  }, []);
+
   const handleNewConversation = useCallback(async () => {
     if (!newContactName.trim() || !newContactPhone.trim()) {
       toast({
@@ -1045,15 +1058,10 @@ export default function Atendimento() {
       });
       
       await loadConversations();
-      
+
       // Fechar dialog e limpar campos
-      setIsNewConversationOpen(false);
-      setNewContactName("");
-      setNewContactPhone("");
-      setNewContactCpf("");
-      setNewContactContract("");
-      setNewContactTemplateId("");
-      
+      closeNewConversationModal();
+
       // Aguardar um pouco e selecionar a nova conversa
       setTimeout(async () => {
         await loadConversations();
@@ -1079,7 +1087,7 @@ export default function Atendimento() {
         variant: "destructive",
       });
     }
-  }, [newContactName, newContactPhone, newContactCpf, newContactContract, newContactTemplateId, user, playSuccessSound, playErrorSound, loadConversations]);
+  }, [newContactName, newContactPhone, newContactCpf, newContactContract, newContactTemplateId, selectedLineId, user, playSuccessSound, playErrorSound, loadConversations, closeNewConversationModal]);
 
   const formatTime = (datetime: string) => {
     try {
@@ -1372,7 +1380,7 @@ export default function Atendimento() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsNewConversationOpen(false)}>
+                    <Button variant="outline" onClick={closeNewConversationModal}>
                       Cancelar
                     </Button>
                     <Button onClick={handleNewConversation} disabled={!newContactTemplateId || !selectedLineId}>
