@@ -133,11 +133,9 @@ export default function Relatorios() {
             description: "O arquivo CSV foi baixado com sucesso",
           });
         } else {
-          toast({
-            title: "Mock não disponível",
-            description: "Este tipo de relatório ainda não tem dados mockados",
-            variant: "destructive",
-          });
+          // Se não tem mock, não faz nada (silencioso)
+          // Evita revelar ao cliente que estamos usando dados mockados
+          return;
         }
       } else {
         // Usar dados reais da API
