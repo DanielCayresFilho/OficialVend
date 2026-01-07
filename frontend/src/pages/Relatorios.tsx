@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, Download, Loader2, AlertCircle } from "lucide-react";
+import { BarChart3, Download, Loader2 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,13 @@ export default function Relatorios() {
   useEffect(() => {
     loadSegments();
   }, [loadSegments]);
+
+  // Resetar dados quando mudar o tipo de relatório
+  useEffect(() => {
+    setReportGenerated(false);
+    setReportBlob(null);
+    setMockReportData(null);
+  }, [reportType]);
 
   const getMockDataForReportType = (type: string) => {
     const mockDataMap: Record<string, any> = {
@@ -641,21 +648,6 @@ export default function Relatorios() {
   return (
     <MainLayout>
       <div className="space-y-4 md:space-y-6 p-4 md:p-6 animate-fade-in">
-        {/* Mock Data Banner */}
-        {mockDataEnabled && (
-          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-yellow-500 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-yellow-500">Modo de Demonstração Ativo</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Os relatórios estão mostrando dados mockados para apresentação. Para usar dados reais, defina <code className="px-1 py-0.5 bg-black/20 rounded text-xs">VITE_USE_MOCK_DATA=false</code> no arquivo .env
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Filters */}
         <GlassCard>
           <h2 className="text-xl font-semibold text-foreground mb-6">Relatórios</h2>
@@ -749,14 +741,9 @@ export default function Relatorios() {
               {mockDataEnabled && mockReportData && (
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-foreground text-lg">
-                        {getSelectedReportLabel()}
-                      </h3>
-                      <span className="px-2 py-1 bg-yellow-500/10 text-yellow-500 text-xs rounded-full font-medium">
-                        Dados de Demonstração
-                      </span>
-                    </div>
+                    <h3 className="font-semibold text-foreground text-lg">
+                      {getSelectedReportLabel()}
+                    </h3>
                     <Button onClick={handleExport} size="sm">
                       <Download className="mr-2 h-4 w-4" />
                       Baixar CSV
