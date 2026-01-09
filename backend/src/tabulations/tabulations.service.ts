@@ -86,7 +86,13 @@ export class TabulationsService {
           for (const row of results) {
             try {
               // Tentar diferentes nomes de coluna
-              const name = row['Nome']?.trim() || row['Name']?.trim() || row['Tabulação']?.trim() || row['Tabulation']?.trim();
+              const name = row['FINALIZAÇÃO NORMALIZADA']?.trim() ||
+                row['FINALIZACAO NORMALIZADA']?.trim() ||
+                row['Nome']?.trim() ||
+                row['Name']?.trim() ||
+                row['Tabulação']?.trim() ||
+                row['Tabulation']?.trim();
+
               const isCPCStr = row['CPC']?.trim() || row['isCPC']?.trim() || row['Is CPC']?.trim();
 
               // Converter strings para boolean
