@@ -24,7 +24,7 @@ async function apiRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = getAuthToken();
-  
+
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,
@@ -358,9 +358,9 @@ export const linesService = {
     return apiRequest<Line[]>(`/lines/available/${segment}`);
   },
 
-  getQrCode: async (id: number): Promise<{ 
-    qrcode: string | null; 
-    connected?: boolean; 
+  getQrCode: async (id: number): Promise<{
+    qrcode: string | null;
+    connected?: boolean;
     pairingCode?: string;
     message?: string;
   }> => {
@@ -638,9 +638,16 @@ export interface Tabulation {
   id: number;
   name: string;
   isCPC: boolean;
+  isEnvio: boolean;
+  isEntregue: boolean;
+  isLido: boolean;
+  isRetorno: boolean;
+  isCPCProd: boolean;
+  isBoleto: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
 
 export const tabulationsService = {
   list: async (search?: string): Promise<Tabulation[]> => {
@@ -652,19 +659,47 @@ export const tabulationsService = {
     return apiRequest<Tabulation>(`/tabulations/${id}`);
   },
 
-  create: async (name: string, isCPC: boolean = false): Promise<Tabulation> => {
+  create: async (
+    name: string,
+    isCPC: boolean = false,
+    isEnvio: boolean = true,
+    isEntregue: boolean = true,
+    isLido: boolean = true,
+    isRetorno: boolean = true,
+    isCPCProd: boolean = false,
+    isBoleto: boolean = false
+  ): Promise<Tabulation> => {
     return apiRequest<Tabulation>('/tabulations', {
       method: 'POST',
-      body: JSON.stringify({ name, isCPC }),
+      body: JSON.stringify({
+        name,
+        isCPC,
+        isEnvio,
+        isEntregue,
+        isLido,
+        isRetorno,
+        isCPCProd,
+        isBoleto
+      }),
     });
   },
 
-  update: async (id: number, data: { name?: string; isCPC?: boolean }): Promise<Tabulation> => {
+  update: async (id: number, data: {
+    name?: string;
+    isCPC?: boolean;
+    isEnvio?: boolean;
+    isEntregue?: boolean;
+    isLido?: boolean;
+    isRetorno?: boolean;
+    isCPCProd?: boolean;
+    isBoleto?: boolean;
+  }): Promise<Tabulation> => {
     return apiRequest<Tabulation>(`/tabulations/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   },
+
 
   delete: async (id: number): Promise<void> => {
     await apiRequest(`/tabulations/${id}`, { method: 'DELETE' });
@@ -673,7 +708,7 @@ export const tabulationsService = {
   uploadCSV: async (file: File): Promise<{ message: string; success: number; errors: string[] }> => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     return apiRequest<{ message: string; success: number; errors: string[] }>('/tabulations/upload-csv', {
       method: 'POST',
       body: formData,
@@ -990,7 +1025,7 @@ export const templatesService = {
   downloadCsv: async (params?: { search?: string; segmentId?: number; status?: string }): Promise<Blob> => {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
     const url = `${API_BASE_URL}/templates/export/csv${query}`;
-    
+
     const token = getAuthToken();
     const response = await fetch(url, {
       method: 'GET',
@@ -1057,11 +1092,11 @@ const arrayToCSV = (data: any[]): string => {
   if (!data || data.length === 0) {
     return '';
   }
-  
+
   const headers = Object.keys(data[0]);
   const csvRows = [
     headers.join(','),
-    ...data.map(row => 
+    ...data.map(row =>
       headers.map(header => {
         const value = row[header];
         // Escapar valores com vírgulas ou aspas
@@ -1074,7 +1109,7 @@ const arrayToCSV = (data: any[]): string => {
       }).join(',')
     ),
   ];
-  
+
   // Adicionar BOM (Byte Order Mark) para UTF-8 para garantir encoding correto no Excel
   return '\ufeff' + csvRows.join('\n');
 };
@@ -1093,7 +1128,7 @@ export const reportsService = {
     if (params.segment) queryParams.append('segment', params.segment.toString());
 
     const url = `${API_BASE_URL}/reports/${endpoint}?${queryParams.toString()}`;
-    
+
     const token = getAuthToken();
     const response = await fetch(url, {
       method: 'GET',
@@ -1111,7 +1146,7 @@ export const reportsService = {
     // Backend retorna JSON, precisamos converter para CSV
     const data = await response.json();
     const csvContent = arrayToCSV(Array.isArray(data) ? data : [data]);
-    
+
     return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   },
 };

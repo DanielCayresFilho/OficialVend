@@ -15,6 +15,12 @@ interface Tabulation {
   id: string;
   name: string;
   isCPC: boolean;
+  isEnvio: boolean;
+  isEntregue: boolean;
+  isLido: boolean;
+  isRetorno: boolean;
+  isCPCProd: boolean;
+  isBoleto: boolean;
 }
 
 export default function Tabulacoes() {
@@ -23,7 +29,17 @@ export default function Tabulacoes() {
   const [isSaving, setIsSaving] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTabulation, setEditingTabulation] = useState<Tabulation | null>(null);
-  const [formData, setFormData] = useState({ name: '', isCPC: false });
+  const [formData, setFormData] = useState({
+    name: '',
+    isCPC: false,
+    isEnvio: true,
+    isEntregue: true,
+    isLido: true,
+    isRetorno: true,
+    isCPCProd: false,
+    isBoleto: false
+  });
+
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -38,8 +54,15 @@ export default function Tabulacoes() {
       setTabulations(data.map((t: ApiTabulation) => ({
         id: String(t.id),
         name: t.name,
-        isCPC: t.isCPC
+        isCPC: t.isCPC,
+        isEnvio: t.isEnvio,
+        isEntregue: t.isEntregue,
+        isLido: t.isLido,
+        isRetorno: t.isRetorno,
+        isCPCProd: t.isCPCProd,
+        isBoleto: t.isBoleto
       })));
+
     } catch (error) {
       console.error('Error loading tabulations:', error);
       toast({
@@ -67,15 +90,34 @@ export default function Tabulacoes() {
 
   const handleAdd = () => {
     setEditingTabulation(null);
-    setFormData({ name: '', isCPC: false });
+    setFormData({
+      name: '',
+      isCPC: false,
+      isEnvio: true,
+      isEntregue: true,
+      isLido: true,
+      isRetorno: true,
+      isCPCProd: false,
+      isBoleto: false
+    });
     setIsFormOpen(true);
   };
 
   const handleEdit = (tabulation: Tabulation) => {
     setEditingTabulation(tabulation);
-    setFormData({ name: tabulation.name, isCPC: tabulation.isCPC });
+    setFormData({
+      name: tabulation.name,
+      isCPC: tabulation.isCPC,
+      isEnvio: tabulation.isEnvio,
+      isEntregue: tabulation.isEntregue,
+      isLido: tabulation.isLido,
+      isRetorno: tabulation.isRetorno,
+      isCPCProd: tabulation.isCPCProd,
+      isBoleto: tabulation.isBoleto
+    });
     setIsFormOpen(true);
   };
+
 
   const handleDelete = async (tabulation: Tabulation) => {
     try {
@@ -110,29 +152,57 @@ export default function Tabulacoes() {
       if (editingTabulation) {
         const updated = await tabulationsService.update(Number(editingTabulation.id), {
           name: formData.name,
-          isCPC: formData.isCPC
+          isCPC: formData.isCPC,
+          isEnvio: formData.isEnvio,
+          isEntregue: formData.isEntregue,
+          isLido: formData.isLido,
+          isRetorno: formData.isRetorno,
+          isCPCProd: formData.isCPCProd,
+          isBoleto: formData.isBoleto
         });
         setTabulations(tabulations.map(t => t.id === editingTabulation.id ? {
           id: String(updated.id),
           name: updated.name,
-          isCPC: updated.isCPC
+          isCPC: updated.isCPC,
+          isEnvio: updated.isEnvio,
+          isEntregue: updated.isEntregue,
+          isLido: updated.isLido,
+          isRetorno: updated.isRetorno,
+          isCPCProd: updated.isCPCProd,
+          isBoleto: updated.isBoleto
         } : t));
         toast({
           title: "Tabulação atualizada",
           description: `A tabulação ${updated.name} foi atualizada com sucesso`,
         });
       } else {
-        const created = await tabulationsService.create(formData.name, formData.isCPC);
+        const created = await tabulationsService.create(
+          formData.name,
+          formData.isCPC,
+          formData.isEnvio,
+          formData.isEntregue,
+          formData.isLido,
+          formData.isRetorno,
+          formData.isCPCProd,
+          formData.isBoleto
+        );
         setTabulations([...tabulations, {
           id: String(created.id),
           name: created.name,
-          isCPC: created.isCPC
+          isCPC: created.isCPC,
+          isEnvio: created.isEnvio,
+          isEntregue: created.isEntregue,
+          isLido: created.isLido,
+          isRetorno: created.isRetorno,
+          isCPCProd: created.isCPCProd,
+          isBoleto: created.isBoleto
         }]);
         toast({
           title: "Tabulação criada",
           description: `A tabulação ${created.name} foi criada com sucesso`,
         });
       }
+
       setIsFormOpen(false);
     } catch (error) {
       console.error('Error saving tabulation:', error);
@@ -201,15 +271,77 @@ export default function Tabulacoes() {
           placeholder="Ex: Venda Realizada, Não Atendeu"
         />
       </div>
-      <div className="flex items-center space-x-2">
-        <Checkbox
-          id="isCPC"
-          checked={formData.isCPC}
-          onCheckedChange={(checked) => setFormData({ ...formData, isCPC: checked === true })}
-        />
-        <Label htmlFor="isCPC" className="text-sm font-normal">
-          É CPC (Contato com a Pessoa Certa)
-        </Label>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="isCPC"
+            checked={formData.isCPC}
+            onCheckedChange={(checked) => setFormData({ ...formData, isCPC: checked === true })}
+          />
+          <Label htmlFor="isCPC" className="text-sm font-normal">
+            É CPC
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="isEnvio"
+            checked={formData.isEnvio}
+            onCheckedChange={(checked) => setFormData({ ...formData, isEnvio: checked === true })}
+          />
+          <Label htmlFor="isEnvio" className="text-sm font-normal">
+            Envio
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="isEntregue"
+            checked={formData.isEntregue}
+            onCheckedChange={(checked) => setFormData({ ...formData, isEntregue: checked === true })}
+          />
+          <Label htmlFor="isEntregue" className="text-sm font-normal">
+            Entregue
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="isLido"
+            checked={formData.isLido}
+            onCheckedChange={(checked) => setFormData({ ...formData, isLido: checked === true })}
+          />
+          <Label htmlFor="isLido" className="text-sm font-normal">
+            Lido
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="isRetorno"
+            checked={formData.isRetorno}
+            onCheckedChange={(checked) => setFormData({ ...formData, isRetorno: checked === true })}
+          />
+          <Label htmlFor="isRetorno" className="text-sm font-normal">
+            Retorno
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="isCPCProd"
+            checked={formData.isCPCProd}
+            onCheckedChange={(checked) => setFormData({ ...formData, isCPCProd: checked === true })}
+          />
+          <Label htmlFor="isCPCProd" className="text-sm font-normal">
+            CPC Produtivo
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="isBoleto"
+            checked={formData.isBoleto}
+            onCheckedChange={(checked) => setFormData({ ...formData, isBoleto: checked === true })}
+          />
+          <Label htmlFor="isBoleto" className="text-sm font-normal">
+            Boleto
+          </Label>
+        </div>
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>
@@ -220,6 +352,7 @@ export default function Tabulacoes() {
           Salvar
         </Button>
       </DialogFooter>
+
     </div>
   );
 

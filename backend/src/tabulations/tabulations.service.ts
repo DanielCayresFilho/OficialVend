@@ -7,7 +7,7 @@ import csv from 'csv-parser';
 
 @Injectable()
 export class TabulationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createTabulationDto: CreateTabulationDto) {
     return this.prisma.tabulation.create({
@@ -70,7 +70,7 @@ export class TabulationsService {
 
     return new Promise((resolve, reject) => {
       const stream = Readable.from(file.buffer.toString('utf-8'));
-      
+
       stream
         .pipe(csv({ separator: ';' }))
         .on('data', (data) => {
@@ -88,10 +88,40 @@ export class TabulationsService {
               // Tentar diferentes nomes de coluna
               const name = row['Nome']?.trim() || row['Name']?.trim() || row['Tabulação']?.trim() || row['Tabulation']?.trim();
               const isCPCStr = row['CPC']?.trim() || row['isCPC']?.trim() || row['Is CPC']?.trim();
-              
-              // Converter isCPC para boolean
-              const isCPC = isCPCStr 
+
+              // Converter strings para boolean
+              const isCPC = isCPCStr
                 ? (isCPCStr.toLowerCase() === 'true' || isCPCStr.toLowerCase() === 'sim' || isCPCStr.toLowerCase() === 'yes' || isCPCStr === '1')
+                : false;
+
+              const isEnvioStr = row['ENVIO']?.trim() || row['isEnvio']?.trim();
+              const isEnvio = isEnvioStr
+                ? (isEnvioStr.toLowerCase() === 'true' || isEnvioStr.toLowerCase() === 'sim' || isEnvioStr.toLowerCase() === 'yes' || isEnvioStr === '1')
+                : true; // Default true
+
+              const isEntregueStr = row['ENTREGUE']?.trim() || row['isEntregue']?.trim();
+              const isEntregue = isEntregueStr
+                ? (isEntregueStr.toLowerCase() === 'true' || isEntregueStr.toLowerCase() === 'sim' || isEntregueStr.toLowerCase() === 'yes' || isEntregueStr === '1')
+                : true; // Default true
+
+              const isLidoStr = row['LIDO']?.trim() || row['isLido']?.trim();
+              const isLido = isLidoStr
+                ? (isLidoStr.toLowerCase() === 'true' || isLidoStr.toLowerCase() === 'sim' || isLidoStr.toLowerCase() === 'yes' || isLidoStr === '1')
+                : true; // Default true
+
+              const isRetornoStr = row['RETORNO']?.trim() || row['isRetorno']?.trim();
+              const isRetorno = isRetornoStr
+                ? (isRetornoStr.toLowerCase() === 'true' || isRetornoStr.toLowerCase() === 'sim' || isRetornoStr.toLowerCase() === 'yes' || isRetornoStr === '1')
+                : true; // Default true
+
+              const isCPCProdStr = row['CPC_PROD']?.trim() || row['isCPCProd']?.trim();
+              const isCPCProd = isCPCProdStr
+                ? (isCPCProdStr.toLowerCase() === 'true' || isCPCProdStr.toLowerCase() === 'sim' || isCPCProdStr.toLowerCase() === 'yes' || isCPCProdStr === '1')
+                : false;
+
+              const isBoletoStr = row['BOLETO']?.trim() || row['isBoleto']?.trim();
+              const isBoleto = isBoletoStr
+                ? (isBoletoStr.toLowerCase() === 'true' || isBoletoStr.toLowerCase() === 'sim' || isBoletoStr.toLowerCase() === 'yes' || isBoletoStr === '1')
                 : false;
 
               if (!name) {
@@ -126,11 +156,21 @@ export class TabulationsService {
 
               // Criar tabulação
               await this.prisma.tabulation.create({
-                data: { name, isCPC },
+                data: {
+                  name,
+                  isCPC,
+                  isEnvio,
+                  isEntregue,
+                  isLido,
+                  isRetorno,
+                  isCPCProd,
+                  isBoleto
+                },
               });
 
               successCount++;
               console.log(`✅ Tabulação criada: ${name} (CPC: ${isCPC})`);
+
             } catch (error) {
               const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
               errors.push(`Erro ao processar linha: ${errorMsg}`);

@@ -4,7 +4,7 @@ import { ReportFilterDto } from './dto/report-filter.dto';
 
 @Injectable()
 export class ReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   /**
    * Helper: Formatar data como YYYY-MM-DD
@@ -40,17 +40,17 @@ export class ReportsService {
    */
   private normalizeText(text: string | null | undefined): string | null {
     if (!text) return null;
-    
+
     try {
       // Garantir que o texto está em UTF-8
       if (typeof text !== 'string') {
         text = String(text);
       }
-      
+
       // Normalizar Unicode (NFD -> NFC) para garantir caracteres compostos corretos
       // Isso resolve problemas com acentos e caracteres especiais
       let normalized = text.normalize('NFC');
-      
+
       // Garantir que está em UTF-8 válido
       // Se houver caracteres inválidos, tentar reparar
       try {
@@ -69,7 +69,7 @@ export class ReportsService {
           console.warn('Erro ao normalizar texto:', e2);
         }
       }
-      
+
       return normalized;
     } catch (error) {
       // Se houver erro, retornar texto original
@@ -85,11 +85,11 @@ export class ReportsService {
     if (obj === null || obj === undefined) {
       return obj;
     }
-    
+
     if (Array.isArray(obj)) {
       return obj.map(item => this.normalizeObject(item));
     }
-    
+
     if (typeof obj === 'object') {
       const normalized: any = {};
       for (const [key, value] of Object.entries(obj)) {
@@ -101,11 +101,11 @@ export class ReportsService {
       }
       return normalized;
     }
-    
+
     if (typeof obj === 'string') {
       return this.normalizeText(obj);
     }
-    
+
     return obj;
   }
 
@@ -117,7 +117,7 @@ export class ReportsService {
    */
   async getOpSinteticoReport(filters: ReportFilterDto) {
     console.log('📊 [Reports] OP Sintético - Filtros:', JSON.stringify(filters));
-    
+
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -169,7 +169,7 @@ export class ReportsService {
       }
 
       grouped[key].totalMensagens++;
-      
+
       if (conv.sender === 'contact') {
         grouped[key].entrantes++;
       }
@@ -190,7 +190,7 @@ export class ReportsService {
       'Qtd. Total Mensagens': item.totalMensagens,
       'Qtd. Total Entrantes': item.entrantes,
       'Qtd. Promessas': item.promessas,
-      Conversão: item.totalMensagens > 0 
+      Conversão: item.totalMensagens > 0
         ? `${((item.promessas / item.totalMensagens) * 100).toFixed(2)}%`
         : '0%',
       'Tempo Médio Transbordo': null,
@@ -229,7 +229,7 @@ export class ReportsService {
    */
   async getKpiReport(filters: ReportFilterDto) {
     console.log('📊 [Reports] KPI - Filtros:', JSON.stringify(filters));
-    
+
     const whereClause: any = {
       tabulation: { not: null },
     };
@@ -663,23 +663,25 @@ export class ReportsService {
         login: firstConv.userName || null,
         evento: tabulation?.name || null,
         evento_normalizado: tabulation?.name || null,
-        envio: 'Sim',
+        envio: tabulation ? (tabulation.isEnvio ? 'Sim' : 'Não') : 'Sim',
         falha: 'Não',
-        entregue: 'Sim',
-        lido: null,
+        entregue: tabulation ? (tabulation.isEntregue ? 'Sim' : 'Não') : 'Sim',
+        lido: tabulation ? (tabulation.isLido ? 'Sim' : 'Não') : 'Sim',
+        retorno: tabulation ? (tabulation.isRetorno ? 'Sim' : 'Não') : 'Não',
         cpc: tabulation?.isCPC ? 'Sim' : 'Não',
-        cpc_produtivo: tabulation?.isCPC ? 'Sim' : 'Não',
-        boleto: tabulation?.isCPC ? 'Sim' : 'Não',
+        cpc_produtivo: tabulation?.isCPCProd ? 'Sim' : 'Não',
+        boleto: tabulation?.isBoleto ? 'Sim' : 'Não',
         valor: null,
         transbordo: null,
         primeira_opcao_oferta: null,
         segunda_via: null,
         nota_nps: null,
         obs_nps: null,
-        erro_api: null,
+        erro_api: tabulation?.name === 'ERRO API' ? 'Sim' : 'Não',
         abandono: !tabulation ? 'Sim' : 'Não',
         protocolo: null,
       });
+
     });
 
     return this.normalizeObject(result);
@@ -980,10 +982,10 @@ export class ReportsService {
 
     // Agrupar por operador
     const operatorGroups: Record<string, { count: number; segment?: number }> = {};
-    
+
     conversations.forEach(conv => {
       if (!conv.userName) return;
-      
+
       const key = conv.userName;
       if (!operatorGroups[key]) {
         operatorGroups[key] = { count: 0, segment: conv.segment || undefined };
@@ -1350,7 +1352,7 @@ export class ReportsService {
    */
   async getResumoAtendimentosReport(filters: ReportFilterDto) {
     console.log('📊 [Reports] Gerando Resumo Atendimentos com filtros:', JSON.stringify(filters));
-    
+
     const whereClause: any = {};
 
     if (filters.segment) {

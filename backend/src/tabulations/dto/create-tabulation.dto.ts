@@ -8,4 +8,29 @@ export class CreateTabulationDto {
   @IsBoolean()
   @IsOptional()
   isCPC?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isEnvio?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isEntregue?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isLido?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isRetorno?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isCPCProd?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isBoleto?: boolean;
 }
+

@@ -71,14 +71,21 @@ model Segment {
 }
 
 model Tabulation {
-  id        Int      @id @default(autoincrement())
-  name      String
-  isCPC     Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  isCPC       Boolean  @default(false)
+  isEnvio     Boolean  @default(true)
+  isEntregue  Boolean  @default(true)
+  isLido      Boolean  @default(true)
+  isRetorno   Boolean  @default(true)
+  isCPCProd   Boolean  @default(false)
+  isBoleto    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([name])
 }
+
 
 model Contact {
   id        Int       @id @default(autoincrement())
