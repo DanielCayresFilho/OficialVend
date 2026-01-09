@@ -22,7 +22,6 @@ import { SpintaxService } from '../spintax/spintax.service';
 import { HealthCheckCacheService } from '../health-check-cache/health-check-cache.service';
 import { LineReputationService } from '../line-reputation/line-reputation.service';
 import { PhoneValidationService } from '../phone-validation/phone-validation.service';
-import { LineAssignmentService } from '../line-assignment/line-assignment.service';
 import { MessageValidationService } from '../message-validation/message-validation.service';
 import { MessageSendingService } from '../message-sending/message-sending.service';
 import { AppLoggerService } from '../logger/logger.service';
@@ -37,7 +36,7 @@ import * as path from 'path';
       const allowedOrigins = process.env.CORS_ORIGINS
         ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
         : ['http://localhost:5173', 'http://localhost:3001'];
-      
+
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -70,12 +69,11 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     private healthCheckCacheService: HealthCheckCacheService,
     private lineReputationService: LineReputationService,
     private phoneValidationService: PhoneValidationService,
-    private lineAssignmentService: LineAssignmentService,
     private messageValidationService: MessageValidationService,
     private messageSendingService: MessageSendingService,
     private logger: AppLoggerService,
     private whatsappCloudService: WhatsappCloudService,
-  ) {}
+  ) { }
 
   async handleConnection(client: Socket) {
     try {
@@ -87,7 +85,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
 
       const payload = this.jwtService.verify(token);
-      const user = await this.prisma.user.findUnique({
+      const user = await (this.prisma as any).user.findUnique({
         where: { id: payload.sub },
       });
 
@@ -101,7 +99,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       this.operatorConnectionTime.set(user.id, Date.now()); // Rastrear tempo de conexão
 
       // Atualizar status do usuário para Online
-      await this.prisma.user.update({
+      await (this.prisma as any).user.update({
         where: { id: user.id },
         data: { status: 'Online' },
       });
@@ -109,52 +107,6 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       // Log apenas para operadores (fluxo principal)
       if (user.role === 'operator') {
         console.log(`✅ Operador ${user.name} conectado`);
-      }
-
-      // Se for operador, verificar e sincronizar linha
-      if (user.role === 'operator') {
-        // Se já tem linha no campo legacy, verificar se está na tabela LineOperator
-        if (user.line) {
-          const existingLink = await (this.prisma as any).lineOperator.findFirst({
-            where: {
-              lineId: user.line,
-              userId: user.id,
-            },
-          });
-
-          if (!existingLink) {
-            // Sincronizar: criar entrada na tabela LineOperator
-            // Verificar se a linha ainda existe e está ativa
-            const line = await this.prisma.linesStock.findUnique({
-              where: { id: user.line },
-            });
-
-            if (line && line.lineStatus === 'active') {
-              // Verificar quantos operadores já estão vinculados
-              const currentOperatorsCount = await (this.prisma as any).lineOperator.count({
-                where: { lineId: user.line },
-              });
-
-              if (currentOperatorsCount < 2) {
-                try {
-                  await this.linesService.assignOperatorToLine(user.line, user.id); // ✅ COM LOCK
-                } catch (error) {
-                  console.error(`❌ [WebSocket] Erro ao sincronizar linha ${user.line} para ${user.name}:`, error.message);
-                }
-              }
-            } else {
-              // Remover linha inválida do operador
-              await this.prisma.user.update({
-                where: { id: user.id },
-                data: { line: null },
-              });
-              user.line = null;
-            }
-          }
-        }
-
-        // REMOVIDO: Alocação automática de linhas ao conectar
-        // Operadores devem ter linhas atribuídas manualmente
       }
 
       // Enviar conversas ativas ao conectar (apenas para operators)
@@ -166,70 +118,68 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         client.emit('active-conversations', activeConversations);
 
         // Processar mensagens pendentes na fila quando operador fica online
-        if (user.line) {
-          try {
-            // Buscar mensagens pendentes do segmento do operador
-            const whereClause: any = { status: 'pending' };
-            if (user.segment) {
-              whereClause.segment = user.segment;
-            }
+        try {
+          // Buscar mensagens pendentes do segmento do operador
+          const whereClause: any = { status: 'pending' };
+          if (user.segment) {
+            whereClause.segment = user.segment;
+          }
 
-            // Remover limite de 10 - processar todas as mensagens pendentes
-            const pendingMessages = await (this.prisma as any).messageQueue.findMany({
-              where: whereClause,
-              orderBy: { createdAt: 'asc' },
-              // Processar em lotes de 50 para não sobrecarregar
-              take: 50,
-            });
+          // Remover limite de 10 - processar todas as mensagens pendentes
+          const pendingMessages = await (this.prisma as any).messageQueue.findMany({
+            where: whereClause,
+            orderBy: { createdAt: 'asc' },
+            // Processar em lotes de 50 para não sobrecarregar
+            take: 50,
+          });
 
-            for (const queuedMessage of pendingMessages) {
-              try {
+          for (const queuedMessage of pendingMessages) {
+            try {
+              await (this.prisma as any).messageQueue.update({
+                where: { id: queuedMessage.id },
+                data: { status: 'processing', attempts: { increment: 1 } },
+              });
+
+              // Criar conversa
+              await this.conversationsService.create({
+                contactPhone: queuedMessage.contactPhone,
+                contactName: queuedMessage.contactName || queuedMessage.contactPhone,
+                message: queuedMessage.message,
+                sender: 'contact',
+                messageType: queuedMessage.messageType,
+                mediaUrl: queuedMessage.mediaUrl,
+                segment: queuedMessage.segment,
+                userId: user.id,
+                userLine: user.line,
+              });
+
+              await (this.prisma as any).messageQueue.update({
+                where: { id: queuedMessage.id },
+                data: { status: 'sent', processedAt: new Date() },
+              });
+
+              this.emitToUser(user.id, 'queued-message-processed', {
+                messageId: queuedMessage.id,
+                contactPhone: queuedMessage.contactPhone,
+              });
+            } catch (error) {
+              console.error(`❌ [WebSocket] Erro ao processar mensagem ${queuedMessage.id}:`, error);
+              if (queuedMessage.attempts >= 3) {
                 await (this.prisma as any).messageQueue.update({
                   where: { id: queuedMessage.id },
-                  data: { status: 'processing', attempts: { increment: 1 } },
+                  data: { status: 'failed', errorMessage: error.message },
                 });
-
-                // Criar conversa
-                await this.conversationsService.create({
-                  contactPhone: queuedMessage.contactPhone,
-                  contactName: queuedMessage.contactName || queuedMessage.contactPhone,
-                  message: queuedMessage.message,
-                  sender: 'contact',
-                  messageType: queuedMessage.messageType,
-                  mediaUrl: queuedMessage.mediaUrl,
-                  segment: queuedMessage.segment,
-                  userId: user.id,
-                  userLine: user.line,
-                });
-
+              } else {
                 await (this.prisma as any).messageQueue.update({
                   where: { id: queuedMessage.id },
-                  data: { status: 'sent', processedAt: new Date() },
+                  data: { status: 'pending' },
                 });
-
-                this.emitToUser(user.id, 'queued-message-processed', {
-                  messageId: queuedMessage.id,
-                  contactPhone: queuedMessage.contactPhone,
-                });
-              } catch (error) {
-                console.error(`❌ [WebSocket] Erro ao processar mensagem ${queuedMessage.id}:`, error);
-                if (queuedMessage.attempts >= 3) {
-                  await (this.prisma as any).messageQueue.update({
-                    where: { id: queuedMessage.id },
-                    data: { status: 'failed', errorMessage: error.message },
-                  });
-                } else {
-                  await (this.prisma as any).messageQueue.update({
-                    where: { id: queuedMessage.id },
-                    data: { status: 'pending' },
-                  });
-                }
               }
             }
-
-          } catch (error) {
-            console.error('❌ [WebSocket] Erro ao processar fila de mensagens:', error);
           }
+
+        } catch (error) {
+          console.error('❌ [WebSocket] Erro ao processar fila de mensagens:', error);
         }
       }
     } catch (error) {
@@ -241,14 +191,14 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   async handleDisconnect(client: Socket) {
     if (client.data.user) {
       const userId = client.data.user.id;
-      
+
       try {
-      // Atualizar status do usuário para Offline
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { status: 'Offline' },
-      });
-      
+        // Atualizar status do usuário para Offline
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { status: 'Offline' },
+        });
+
         // Registrar evento de desconexão
         if (client.data.user.role === 'operator') {
           await this.systemEventsService.logEvent(
@@ -259,7 +209,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
             EventSeverity.INFO,
           );
         }
-        
+
         // Log apenas para operadores (fluxo principal)
         if (client.data.user.role === 'operator') {
           console.log(`❌ Operador ${client.data.user.name} desconectado`);
@@ -291,54 +241,50 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     data.contactPhone = this.phoneValidationService.normalizePhone(data.contactPhone);
 
     // Determinar qual linha usar
-    let currentLineId: number | null = null;
+    let currentLineId: number | null = data.lineId || null;
 
-    // Se lineId foi fornecido (1x1 com escolha de linha), validar
-    if (data.lineId) {
-      // Validar que operador tem permissão para 1x1
-      if (!user.oneToOneActive) {
-        return { error: 'Você não tem permissão para iniciar conversas 1x1' };
-      }
-
-      // Validar que a linha pertence ao segmento do operador
-      const selectedLine = await this.prisma.linesStock.findUnique({
-        where: { id: data.lineId },
+    // Se não foi informada uma linha específica (ex: resposta a conversa existente)
+    if (!currentLineId) {
+      const activeConversation = await (this.prisma as any).conversation.findFirst({
+        where: {
+          contactPhone: data.contactPhone,
+          userId: user.id,
+          tabulation: null, // Apenas conversas ativas
+        },
+        orderBy: { datetime: 'desc' },
       });
 
-      if (!selectedLine) {
-        return { error: 'Linha não encontrada' };
-      }
-
-      if (selectedLine.segment !== user.segment) {
-        return { error: 'Você só pode usar linhas do seu segmento' };
-      }
-
-      if (selectedLine.lineStatus !== 'active') {
-        return { error: 'Linha não está ativa' };
-      }
-
-      currentLineId = data.lineId;
-    } else {
-      // Para mensagens normais (não 1x1), usar linha atual do operador
-      currentLineId = user.line;
-      if (!currentLineId) {
-        const lineOperator = await (this.prisma as any).lineOperator.findFirst({
-          where: { userId: user.id },
-          select: { lineId: true },
-        });
-        currentLineId = lineOperator?.lineId || null;
-      }
-
-      // Se operador não tem linha, retornar erro
-      if (!currentLineId) {
-        console.error('❌ [WebSocket] Operador sem linha atribuída - linha deve ser atribuída manualmente');
-        return { error: 'Você não possui uma linha atribuída. Entre em contato com o administrador.' };
+      if (activeConversation && activeConversation.userLine) {
+        currentLineId = activeConversation.userLine;
+        console.log(`ℹ️ [WebSocket] Usando linha da conversa existente: ${currentLineId}`);
       }
     }
 
+    // Se ainda não temos linha, tentar buscar qualquer linha ativa do segmento do operador (Pool)
+    if (!currentLineId) {
+      const availableLine = await (this.prisma as any).linesStock.findFirst({
+        where: {
+          segment: user.segment,
+          lineStatus: 'active',
+        },
+      });
+
+      if (availableLine) {
+        currentLineId = availableLine.id;
+        console.log(`ℹ️ [WebSocket] Usando linha do pool do segmento: ${currentLineId}`);
+      }
+    }
+
+    // Se não encontrou nenhuma linha disponível
+    if (!currentLineId) {
+      console.error(`❌ [WebSocket] Nenhuma linha ativa encontrada no segmento ${user.segment} para o operador ${user.name}`);
+      return { error: 'Nenhuma linha ativa disponível no seu segmento. Entre em contato com o administrador.' };
+    }
+
+
     // Verificar se é uma nova conversa (1x1) e se o operador tem permissão
     if (data.isNewConversation) {
-      const fullUser = await this.prisma.user.findUnique({
+      const fullUser = await (this.prisma as any).user.findUnique({
         where: { id: user.id },
         select: {
           id: true,
@@ -381,7 +327,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
 
       // Buscar linha atual do operador (sempre usar a linha atual, não a linha antiga da conversa)
-      let line = await this.prisma.linesStock.findUnique({
+      let line = await (this.prisma as any).linesStock.findUnique({
         where: { id: currentLineId },
       });
 
@@ -390,7 +336,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
 
       // Buscar o App para obter o accessToken
-      let app = await this.prisma.app.findUnique({
+      let app = await (this.prisma as any).app.findUnique({
         where: { id: line.appId },
       });
 
@@ -411,7 +357,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       // REMOVIDO: Delay de humanização - não é necessário para mensagens do operador
       // O delay de humanização deve ser usado apenas em campanhas massivas, não em mensagens normais do operador
-      
+
       // Health check: Validar credenciais Cloud API (assíncrono, não bloqueia envio)
       // Executar em paralelo para não atrasar o envio
       const healthCheckPromise = this.whatsappCloudService.validateCredentials(
@@ -470,7 +416,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
           // Limpar arquivo temporário se necessário
           if (filePath.includes('temp-')) {
-            await fs.unlink(filePath).catch(() => {});
+            await fs.unlink(filePath).catch(() => { });
           }
         } catch (error: any) {
           console.error('❌ [WebSocket] Erro ao enviar imagem:', error.message);
@@ -480,7 +426,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         // Upload mídia primeiro, depois enviar
         try {
           const fileName = data.fileName || data.mediaUrl.split('/').pop() || 'document.pdf';
-          const cleanFileName = fileName.includes('-') && fileName.match(/^\d+-/) 
+          const cleanFileName = fileName.includes('-') && fileName.match(/^\d+-/)
             ? fileName.replace(/^\d+-/, '').replace(/-\d+\./, '.')
             : fileName;
 
@@ -511,7 +457,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               filePath = await this.mediaService.getFilePath(filename);
             } else {
               // Baixar arquivo externo temporariamente
-              const response = await axios.get(data.mediaUrl, { 
+              const response = await axios.get(data.mediaUrl, {
                 responseType: 'arraybuffer',
                 timeout: 30000,
               });
@@ -544,7 +490,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
           // Limpar arquivo temporário se necessário
           if (filePath.includes('temp-')) {
-            await fs.unlink(filePath).catch(() => {});
+            await fs.unlink(filePath).catch(() => { });
           }
         } catch (error: any) {
           console.error('❌ [WebSocket] Erro ao enviar mídia:', error.message);
@@ -561,7 +507,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
 
       // Buscar contato
-      const contact = await this.prisma.contact.findFirst({
+      const contact = await (this.prisma as any).contact.findFirst({
         where: { phone: data.contactPhone },
       });
 
@@ -582,7 +528,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       // Log apenas para mensagens enviadas com sucesso (fluxo principal)
       console.log(`✅ Mensagem enviada: ${user.name} → ${data.contactPhone}`);
-      
+
       // Emitir mensagem para o usuário IMEDIATAMENTE (antes de registros assíncronos)
       client.emit('message-sent', { message: conversation });
 
@@ -597,7 +543,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           user.id,
           user.segment
         ).catch(err => console.warn('Erro ao registrar mensagem do operador:', err)),
-        
+
         // Registrar evento de mensagem enviada (assíncrono)
         this.systemEventsService.logEvent(
           EventType.MESSAGE_SENT,
@@ -613,15 +559,15 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           user.id,
           EventSeverity.INFO,
         ).catch(err => console.warn('Erro ao registrar evento:', err)),
-        
-        // Verificar health check (se ainda não terminou)
-        healthCheckPromise.then(isValid => {
-          if (!isValid) {
-            console.warn(`⚠️ [WebSocket] Linha ${line.phone} com credenciais inválidas. Realocando em background...`);
-            // Realocar em background sem bloquear
-            this.lineAssignmentService.reallocateLineForOperator(user.id, user.segment, currentLineId)
-              .catch(err => console.warn('Erro ao realocar linha:', err));
-          }
+
+        // Health check: Validar credenciais Cloud API (assíncrono, não bloqueia envio)
+        // Executar em paralelo para não atrasar o envio
+        this.whatsappCloudService.validateCredentials(
+          app.accessToken,
+          line.numberId,
+        ).catch((error: any) => {
+          console.warn('⚠️ [WebSocket] Erro ao validar credenciais (não bloqueia envio):', error.message);
+          return true; // Continuar mesmo se falhar
         }),
       ]).catch(() => {
         // Ignorar erros em operações assíncronas
@@ -637,7 +583,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         code: error.code,
         stack: error.stack,
       });
-      
+
       // Registrar evento de erro
       await this.systemEventsService.logEvent(
         error.code === 'ECONNABORTED' || error.message?.includes('timeout')
@@ -656,262 +602,12 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         EventSeverity.ERROR,
       );
 
-      // Tentar recuperar automaticamente: realocar linha e tentar novamente
-      const recoveryResult = await this.recoverAndRetryMessage(client, user, data, error);
-      
-      if (recoveryResult.success) {
-        // Sucesso após recuperação - não mostrar erro para o operador
-        return { success: true, conversation: recoveryResult.conversation };
-      } else {
-        // Falhou após todas as tentativas - não notificar operador
-        return { error: 'Não foi possível enviar a mensagem' };
-      }
+      // Falhou - notificar operador
+      return { error: 'Não foi possível enviar a mensagem. Verifique a conexão das linhas do seu segmento.' };
     }
   }
 
-  /**
-   * Tenta recuperar de erros e reenviar a mensagem automaticamente
-   * Retorna sucesso se conseguiu enviar, ou falha após todas as tentativas
-   */
-  private async recoverAndRetryMessage(
-    client: Socket,
-    user: any,
-    data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean },
-    originalError: any,
-  ): Promise<{ success: boolean; conversation?: any; reason?: string }> {
-    const maxRetries = 3;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        // 1. Realocar linha
-        const reallocationResult = await this.reallocateLineForOperator(user.id, user.segment);
-        
-        if (!reallocationResult.success) {
-          console.warn(`⚠️ [WebSocket] Falha ao realocar linha na tentativa ${attempt}:`, reallocationResult.reason);
-          if (attempt < maxRetries) {
-            // Aguardar um pouco antes de tentar novamente
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-            continue;
-          }
-          console.error(`❌ [WebSocket] Não foi possível realocar linha após ${maxRetries} tentativas`);
-          return { success: false, reason: 'Não foi possível realocar linha após múltiplas tentativas' };
-        }
-        
-        // 2. Atualizar user object com nova linha
-        user.line = reallocationResult.newLineId;
-        
-        // 3. Buscar dados da nova linha
-        const newLine = await this.prisma.linesStock.findUnique({
-          where: { id: reallocationResult.newLineId },
-        });
-        
-        if (!newLine || newLine.lineStatus !== 'active') {
-          if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-            continue;
-          }
-          return { success: false, reason: 'Nova linha não está ativa' };
-        }
-        
-        // 4. Buscar o App da nova linha
-        const newApp = await this.prisma.app.findUnique({
-          where: { id: newLine.appId },
-        });
 
-        if (!newApp || !newApp.accessToken || !newLine.numberId) {
-          if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-            continue;
-          }
-          return { success: false, reason: 'Nova linha não possui app ou accessToken configurados' };
-        }
-        
-        // 5. Validar credenciais da nova linha
-        try {
-          const isValid = await this.whatsappCloudService.validateCredentials(
-            newApp.accessToken,
-            newLine.numberId,
-          );
-          if (!isValid) {
-            if (attempt < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-              continue;
-            }
-            return { success: false, reason: 'Nova linha com credenciais inválidas' };
-          }
-        } catch (healthError) {
-          // Continuar mesmo assim - tentar enviar
-        }
-      
-        // 6. Tentar enviar mensagem novamente com a nova linha (Cloud API)
-        try {
-          let apiResponse: any;
-          if (data.messageType === 'image' && data.mediaUrl) {
-            // Upload e envio de imagem
-            let filePath: string;
-            if (data.mediaUrl.startsWith('/media/')) {
-              const filename = data.mediaUrl.replace('/media/', '');
-              filePath = await this.mediaService.getFilePath(filename);
-            } else if (data.mediaUrl.startsWith('http')) {
-              const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
-              if (data.mediaUrl.startsWith(appUrl)) {
-                const urlPath = new URL(data.mediaUrl).pathname;
-                const filename = urlPath.replace('/media/', '');
-                filePath = await this.mediaService.getFilePath(filename);
-              } else {
-                const response = await axios.get(data.mediaUrl, { responseType: 'arraybuffer' });
-                filePath = path.join('./uploads', `temp-${Date.now()}-image.jpg`);
-                await fs.mkdir('./uploads', { recursive: true });
-                await fs.writeFile(filePath, response.data);
-              }
-            } else {
-              filePath = path.join('./uploads', data.mediaUrl.replace(/^\/media\//, ''));
-            }
-
-            const uploadResult = await this.whatsappCloudService.uploadMedia({
-              phoneNumberId: newLine.numberId,
-              token: newApp.accessToken,
-              mediaPath: filePath,
-              mediaType: 'image',
-            });
-
-            apiResponse = await this.whatsappCloudService.sendMedia({
-              phoneNumberId: newLine.numberId,
-              token: newApp.accessToken,
-              to: data.contactPhone,
-              mediaType: 'image',
-              mediaId: uploadResult.id,
-              caption: data.message,
-            });
-
-            if (filePath.includes('temp-')) {
-              await fs.unlink(filePath).catch(() => {});
-            }
-          } else if ((data.messageType === 'document' || data.messageType === 'video' || data.messageType === 'audio') && data.mediaUrl) {
-            // Upload e envio de mídia
-            const fileName = data.fileName || data.mediaUrl.split('/').pop() || 'document.pdf';
-            const getMediaType = (filename: string): 'document' | 'video' | 'audio' => {
-              const ext = filename.split('.').pop()?.toLowerCase();
-              if (['mp4', 'mpeg', 'avi', 'mov'].includes(ext || '')) return 'video';
-              if (['mp3', 'ogg', 'wav', 'm4a'].includes(ext || '')) return 'audio';
-              return 'document';
-            };
-            const mediaType = getMediaType(fileName);
-
-            let filePath: string;
-            if (data.mediaUrl.startsWith('/media/')) {
-              const filename = data.mediaUrl.replace('/media/', '');
-              filePath = await this.mediaService.getFilePath(filename);
-            } else if (data.mediaUrl.startsWith('http')) {
-              const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
-              if (data.mediaUrl.startsWith(appUrl)) {
-                const urlPath = new URL(data.mediaUrl).pathname;
-                const filename = urlPath.replace('/media/', '');
-                filePath = await this.mediaService.getFilePath(filename);
-              } else {
-                const response = await axios.get(data.mediaUrl, { responseType: 'arraybuffer' });
-                filePath = path.join('./uploads', `temp-${Date.now()}-${fileName}`);
-                await fs.mkdir('./uploads', { recursive: true });
-                await fs.writeFile(filePath, response.data);
-              }
-            } else {
-              filePath = path.join('./uploads', data.mediaUrl.replace(/^\/media\//, ''));
-            }
-
-            const uploadResult = await this.whatsappCloudService.uploadMedia({
-              phoneNumberId: newLine.numberId,
-              token: newApp.accessToken,
-              mediaPath: filePath,
-              mediaType,
-            });
-
-            apiResponse = await this.whatsappCloudService.sendMedia({
-              phoneNumberId: newLine.numberId,
-              token: newApp.accessToken,
-              to: data.contactPhone,
-              mediaType,
-              mediaId: uploadResult.id,
-              caption: data.message,
-              filename: fileName,
-            });
-
-            if (filePath.includes('temp-')) {
-              await fs.unlink(filePath).catch(() => {});
-            }
-          } else {
-            // Enviar mensagem de texto
-            apiResponse = await this.whatsappCloudService.sendTextMessage({
-              phoneNumberId: newLine.numberId,
-              token: newApp.accessToken,
-              to: data.contactPhone,
-              message: data.message,
-            });
-          }
-        } catch (retryError: any) {
-          console.error(`❌ [WebSocket] Erro ao enviar mensagem com nova linha:`, retryError.message);
-          if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-            continue;
-          }
-          return { success: false, reason: `Erro ao enviar: ${retryError.message}` };
-        }
-        
-        // 7. Se chegou aqui, mensagem foi enviada com sucesso!
-        console.log(`✅ Mensagem enviada após recuperação: ${user.name} → ${data.contactPhone} (tentativa ${attempt})`);
-        
-        // Buscar contato
-        const contact = await this.prisma.contact.findFirst({
-          where: { phone: data.contactPhone },
-        });
-        
-        // Salvar conversa
-        const conversation = await this.conversationsService.create({
-          contactName: contact?.name || 'Desconhecido',
-          contactPhone: data.contactPhone,
-          segment: user.segment,
-          userName: user.name,
-          userLine: newLine.id,
-          userId: user.id,
-          message: data.message,
-          sender: 'operator',
-          messageType: data.messageType || 'text',
-          mediaUrl: data.mediaUrl,
-        });
-        
-        // Registrar mensagem do operador
-        await this.controlPanelService.registerOperatorMessage(
-          data.contactPhone,
-          user.id,
-          user.segment
-        );
-        
-        // Emitir mensagem para o usuário
-        client.emit('message-sent', { message: conversation });
-        this.emitToSupervisors(user.segment, 'new_message', { message: conversation });
-        
-        return { success: true, conversation };
-        
-      } catch (retryError: any) {
-        console.error(`❌ [WebSocket] Erro na tentativa ${attempt} de recuperação:`, {
-          message: retryError.message,
-          status: retryError.response?.status,
-          data: retryError.response?.data,
-        });
-        
-        // Se não for a última tentativa, continuar
-        if (attempt < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-          continue;
-        }
-        
-        // Última tentativa falhou
-        console.error(`❌ [WebSocket] Falha após ${maxRetries} tentativas de recuperação`);
-        return { success: false, reason: `Falha após ${maxRetries} tentativas: ${retryError.message}` };
-      }
-    }
-    
-    return { success: false, reason: 'Todas as tentativas de recuperação falharam' };
-  }
 
   @SubscribeMessage('typing')
   async handleTyping(
@@ -925,186 +621,9 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     });
   }
 
-  // Método auxiliar para encontrar linha disponível para o operador
-  private async findAvailableLineForOperator(availableLines: any[], userId: number, userSegment: number | null) {
-    for (const line of availableLines) {
-      // IMPORTANTE: Verificar se a linha pertence ao mesmo segmento do operador
-      // Se a linha tem segmento diferente e não é padrão (null), pular
-      if (line.segment !== null && line.segment !== userSegment) {
-        continue;
-      }
-
-      const operatorsCount = await (this.prisma as any).lineOperator.count({
-        where: { lineId: line.id },
-      });
-
-      if (operatorsCount < 2) {
-        // Verificar se o operador já está vinculado a esta linha
-        const existing = await (this.prisma as any).lineOperator.findUnique({
-          where: {
-            lineId_userId: {
-              lineId: line.id,
-              userId,
-            },
-          },
-        });
-
-        if (!existing) {
-          // Verificar se a linha já tem operadores de outro segmento
-          const existingOperators = await (this.prisma as any).lineOperator.findMany({
-            where: { lineId: line.id },
-            include: { user: true },
-          });
-
-          // Se a linha já tem operadores, verificar se são do mesmo segmento
-          if (existingOperators.length > 0) {
-            const allSameSegment = existingOperators.every((lo: any) => 
-              lo.user.segment === userSegment
-            );
-            
-            if (!allSameSegment) {
-              // Linha já tem operador de outro segmento, não pode atribuir
-              continue;
-            }
-          }
-
-          return line;
-        }
-      }
-    }
-    return null;
-  }
-
-  // Método para realocar linha quando houver problemas (timeout, etc)
-  private async reallocateLineForOperator(userId: number, userSegment: number | null): Promise<{
-    success: boolean;
-    oldLinePhone?: string;
-    newLinePhone?: string;
-    newLineId?: number;
-    reason?: string;
-  }> {
-    try {
-      // Buscar operador atual
-      const operator = await this.prisma.user.findUnique({
-        where: { id: userId },
-      });
-
-      if (!operator || operator.role !== 'operator') {
-        return { success: false, reason: 'Operador não encontrado' };
-      }
-
-      // Buscar linha atual
-      let currentLineId = operator.line;
-      if (!currentLineId) {
-        // Tentar buscar na tabela LineOperator
-        const lineOperator = await (this.prisma as any).lineOperator.findFirst({
-          where: { userId },
-        });
-        currentLineId = lineOperator?.lineId || null;
-      }
-
-      let oldLinePhone = null;
-      if (currentLineId) {
-        const oldLine = await this.prisma.linesStock.findUnique({
-          where: { id: currentLineId },
-        });
-        oldLinePhone = oldLine?.phone || null;
-
-        // Remover operador da linha antiga
-        await (this.prisma as any).lineOperator.deleteMany({
-          where: { userId, lineId: currentLineId },
-        });
-      }
-
-      // Buscar nova linha disponível
-      let availableLine = null;
-
-      // 1. Primeiro, tentar buscar linha do mesmo segmento do operador
-      if (userSegment) {
-        const segmentLines = await this.prisma.linesStock.findMany({
-          where: {
-            lineStatus: 'active',
-            segment: userSegment,
-          },
-        });
-
-        // Filtrar por evolutions ativas
-        const filteredLines = await this.controlPanelService.filterLinesByActiveEvolutions(segmentLines, userSegment);
-        availableLine = await this.findAvailableLineForOperator(filteredLines, userId, userSegment);
-      }
-
-      // 2. Se não encontrou linha do segmento, buscar linha padrão
-      if (!availableLine) {
-        const defaultSegment = await this.prisma.segment.findUnique({
-          where: { name: 'Padrão' },
-        });
-
-        if (defaultSegment) {
-          const defaultLines = await this.prisma.linesStock.findMany({
-            where: {
-              lineStatus: 'active',
-              segment: defaultSegment.id,
-            },
-          });
-
-          // Filtrar por evolutions ativas
-          const filteredDefaultLines = await this.controlPanelService.filterLinesByActiveEvolutions(defaultLines, userSegment);
-          availableLine = await this.findAvailableLineForOperator(filteredDefaultLines, userId, userSegment);
-
-          // Se encontrou linha padrão e operador tem segmento, atualizar o segmento da linha
-          if (availableLine && userSegment) {
-            await this.prisma.linesStock.update({
-              where: { id: availableLine.id },
-              data: { segment: userSegment },
-            });
-          }
-        }
-      }
-
-      if (!availableLine) {
-        return { success: false, reason: 'Nenhuma linha disponível' };
-      }
-
-      // Verificar quantos operadores já estão vinculados
-      const currentOperatorsCount = await (this.prisma as any).lineOperator.count({
-        where: { lineId: availableLine.id },
-      });
-
-      // Vincular operador à nova linha usando método com transaction + lock
-      try {
-        await this.linesService.assignOperatorToLine(availableLine.id, userId); // ✅ COM LOCK
 
 
-        // Registrar evento de realocação
-        await this.systemEventsService.logEvent(
-          EventType.LINE_REALLOCATED,
-          EventModule.WEBSOCKET,
-          {
-            userId: userId,
-            userName: operator.name,
-            oldLinePhone: oldLinePhone || null,
-            newLinePhone: availableLine.phone,
-            newLineId: availableLine.id,
-          },
-          userId,
-          EventSeverity.WARNING,
-        );
 
-        return {
-          success: true,
-          oldLinePhone: oldLinePhone || undefined,
-          newLinePhone: availableLine.phone,
-          newLineId: availableLine.id,
-        };
-      } catch (error: any) {
-        console.error(`❌ [WebSocket] Erro ao vincular nova linha:`, error.message);
-        return { success: false, reason: error.message };
-      }
-    } catch (error: any) {
-      console.error('❌ [WebSocket] Erro ao realocar linha:', error);
-      return { success: false, reason: error.message || 'Erro desconhecido' };
-    }
-  }
 
   // Método para emitir mensagens recebidas via webhook
   async emitNewMessage(conversation: any) {
@@ -1112,14 +631,14 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       userId: conversation.userId,
       userLine: conversation.userLine,
     });
-    
+
     let messageSent = false;
-    
+
     // 1. Primeiro, tentar enviar para o operador específico que está atendendo (userId)
     if (conversation.userId) {
       const socketId = this.connectedUsers.get(conversation.userId);
       if (socketId) {
-        const user = await this.prisma.user.findUnique({
+        const user = await (this.prisma as any).user.findUnique({
           where: { id: conversation.userId },
         });
         if (user && user.status === 'Online') {
@@ -1133,50 +652,34 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         console.warn(`  ⚠️ Operador ${conversation.userId} não está conectado via WebSocket`);
       }
     }
-    
-    // 2. Se não enviou para operador específico OU se o operador específico não está conectado, 
-    // enviar para TODOS os operadores online da linha (fallback)
-    if (!messageSent && conversation.userLine) {
-      console.log(`  → Fallback: Enviando para todos os operadores online da linha ${conversation.userLine}`);
-      const lineOperators = await (this.prisma as any).lineOperator.findMany({
-        where: { lineId: conversation.userLine },
-        include: { user: true },
+
+    // 2. Se não enviou para operador específico, enviar para TODOS os operadores online do segmento (Pool)
+    if (!messageSent && conversation.segment) {
+      console.log(`  → Fallback: Enviando para todos os operadores online do segmento ${conversation.segment}`);
+      const segmentOperators = await (this.prisma as any).user.findMany({
+        where: {
+          segment: conversation.segment,
+          status: 'Online',
+          role: 'operator',
+        },
       });
 
-      const onlineLineOperators = lineOperators.filter(lo => 
-        lo.user.status === 'Online' && lo.user.role === 'operator'
-      );
+      console.log(`  → Encontrados ${segmentOperators.length} operador(es) online no segmento ${conversation.segment}`);
 
-      console.log(`  → Encontrados ${onlineLineOperators.length} operador(es) online na linha ${conversation.userLine}`);
-
-      onlineLineOperators.forEach(lo => {
-        const socketId = this.connectedUsers.get(lo.userId);
+      segmentOperators.forEach(op => {
+        const socketId = this.connectedUsers.get(op.id);
         if (socketId) {
-          console.log(`  ✅ Enviando para ${lo.user.name} (${lo.user.role}) - operador da linha`);
+          console.log(`  ✅ Enviando para ${op.name} (${op.role}) - operador do segmento`);
           this.server.to(socketId).emit('new_message', { message: conversation });
           messageSent = true;
-        } else {
-          console.warn(`  ⚠️ Operador ${lo.user.name} (${lo.userId}) não está conectado via WebSocket`);
         }
       });
-
-      // Se não encontrou nenhum operador online na linha, logar para debug
-      if (onlineLineOperators.length === 0) {
-        console.warn(`  ⚠️ Nenhum operador online encontrado na linha ${conversation.userLine} para receber a mensagem`);
-        console.log(`  → Operadores vinculados à linha:`, lineOperators.map(lo => ({
-          userId: lo.userId,
-          name: lo.user.name,
-          status: lo.user.status,
-          role: lo.user.role,
-          connected: this.connectedUsers.has(lo.userId),
-        })));
-      }
     }
 
     // 3. Se ainda não enviou e não tem userLine, tentar encontrar operador por conversas ativas do contato
     if (!messageSent && !conversation.userLine) {
       console.log(`  → Tentando encontrar operador por conversas ativas do contato ${conversation.contactPhone}`);
-      const activeConversation = await this.prisma.conversation.findFirst({
+      const activeConversation = await (this.prisma as any).conversation.findFirst({
         where: {
           contactPhone: conversation.contactPhone,
           tabulation: null,
@@ -1209,7 +712,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       if (activeConversation?.userId) {
         const socketId = this.connectedUsers.get(activeConversation.userId);
         if (socketId) {
-          const user = await this.prisma.user.findUnique({
+          const user = await (this.prisma as any).user.findUnique({
             where: { id: activeConversation.userId },
           });
           if (user && user.status === 'Online') {
@@ -1249,7 +752,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   private async emitToSupervisors(segment: number, event: string, data: any) {
-    const supervisors = await this.prisma.user.findMany({
+    const supervisors = await (this.prisma as any).user.findMany({
       where: {
         role: 'supervisor',
         segment,

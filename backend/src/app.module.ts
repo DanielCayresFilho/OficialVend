@@ -27,7 +27,6 @@ import { MessageQueueModule } from './message-queue/message-queue.module';
 import { SystemEventsModule } from './system-events/system-events.module';
 import { LoggerModule } from './logger/logger.module';
 import { CircuitBreakerModule } from './circuit-breaker/circuit-breaker.module';
-import { LineAssignmentModule } from './line-assignment/line-assignment.module';
 import { MessageValidationModule } from './message-validation/message-validation.module';
 import { MessageSendingModule } from './message-sending/message-sending.module';
 import { CacheModule } from './cache/cache.module';
@@ -41,7 +40,6 @@ import { AppsModule } from './apps/apps.module';
     }),
     LoggerModule,
     CircuitBreakerModule,
-    LineAssignmentModule,
     MessageValidationModule,
     MessageSendingModule,
     CacheModule,
@@ -83,4 +81,4 @@ import { AppsModule } from './apps/apps.module';
   providers: [PrismaService],
   exports: [PrismaService],
 })
-export class AppModule {}
+export class AppModule { }

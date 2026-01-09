@@ -23,7 +23,7 @@ export class WebhooksService {
     private controlPanelService: ControlPanelService,
     private blocklistService: BlocklistService,
     private systemEventsService: SystemEventsService,
-  ) {}
+  ) { }
 
   async handleEvolutionMessage(data: any) {
     try {
@@ -116,13 +116,13 @@ export class WebhooksService {
         if (line.receiveMedia && messageType !== 'text') {
           console.log('🔍 [Webhook] Tentando extrair mídia Base64...');
           const base64Media = this.extractBase64Media(message.message);
-          
+
           if (base64Media) {
             console.log('✅ [Webhook] Base64 encontrado, mimetype:', base64Media.mimetype);
             try {
               const fileName = `${Date.now()}-${from}-${messageType}.${this.getExtension(messageType, base64Media.mimetype)}`;
               const localFileName = await this.saveBase64Media(base64Media.data, fileName, base64Media.mimetype);
-              
+
               if (localFileName) {
                 mediaUrl = `/media/${localFileName}`;
                 console.log('📥 Mídia Base64 salva localmente:', mediaUrl);
@@ -137,7 +137,7 @@ export class WebhooksService {
               try {
                 const fileName = `${Date.now()}-${from}-${messageType}.${this.getExtension(messageType)}`;
                 const localFileName = await this.mediaService.downloadMediaFromEvolution(mediaUrl, fileName);
-                
+
                 if (localFileName) {
                   mediaUrl = `/media/${localFileName}`;
                   console.log('📥 Mídia URL salva localmente:', mediaUrl);
@@ -155,7 +155,7 @@ export class WebhooksService {
           try {
             const fileName = `${Date.now()}-${from}-${messageType}.${this.getExtension(messageType)}`;
             const localFileName = await this.mediaService.downloadMediaFromEvolution(mediaUrl, fileName);
-            
+
             if (localFileName) {
               mediaUrl = `/media/${localFileName}`;
               console.log('📥 Mídia salva localmente:', mediaUrl);
@@ -186,12 +186,12 @@ export class WebhooksService {
 
         // Verificar frases de bloqueio automático
         const isBlockPhrase = await this.controlPanelService.checkBlockPhrases(messageText, line.segment);
-        
+
         let blockedByPhrase = false;
         if (isBlockPhrase) {
           console.log('🚫 Frase de bloqueio detectada:', messageText);
           blockedByPhrase = true;
-          
+
           // Adicionar à blocklist
           await this.blocklistService.create({
             name: contact.name,
@@ -209,7 +209,7 @@ export class WebhooksService {
         // Se ainda não encontrou operador online, adicionar à fila de mensagens
         if (!finalOperatorId) {
           console.log(`📥 [Webhook] Nenhum operador online, adicionando mensagem à fila...`);
-          
+
           // Adicionar à fila de mensagens
           await (this.prisma as any).messageQueue.create({
             data: {
@@ -237,7 +237,7 @@ export class WebhooksService {
             null,
             EventSeverity.WARNING,
           );
-          
+
           return { status: 'queued', message: 'Mensagem adicionada à fila (nenhum operador online)' };
         }
 
@@ -286,7 +286,7 @@ export class WebhooksService {
           ...conversation,
           blockedByPhrase,
         };
-        
+
         await this.websocketGateway.emitNewMessage(messagePayload);
 
         return { status: 'success', conversation, blockedByPhrase };
@@ -331,94 +331,36 @@ export class WebhooksService {
           });
 
           if (line) {
-            // Verificar quantos operadores já estão vinculados à linha
-            const currentOperatorsCount = await this.prisma.lineOperator.count({
-              where: { lineId: line.id },
+            // Verificar se a linha é padrão (segmento "Padrão") e precisa de um segmento
+            const defaultSegment = await this.prisma.segment.findUnique({
+              where: { name: 'Padrão' },
             });
 
-            if (currentOperatorsCount < 2) {
-              // Verificar se a linha é padrão (segmento "Padrão")
-              const defaultSegment = await this.prisma.segment.findUnique({
-                where: { name: 'Padrão' },
+            const isDefaultLine = defaultSegment && line.segment === defaultSegment.id;
+
+            if (isDefaultLine) {
+              // Linha padrão: buscar qualquer operador online para herdar o segmento
+              const operatorWithSegment = await this.prisma.user.findFirst({
+                where: {
+                  role: 'operator',
+                  status: 'Online',
+                  segment: { not: null },
+                },
               });
 
-              const isDefaultLine = defaultSegment && line.segment === defaultSegment.id;
-
-              let operatorWithoutLine = null;
-
-              if (isDefaultLine) {
-                // Linha padrão: buscar qualquer operador online sem linha
-                const allOnlineOperators = await this.prisma.user.findMany({
-                  where: {
-                    role: 'operator',
-                    status: 'Online',
-                  },
+              // Se encontrou operador, atualizar segmento da linha para o do operador
+              if (operatorWithSegment && operatorWithSegment.segment) {
+                await this.prisma.linesStock.update({
+                  where: { id: line.id },
+                  data: { segment: operatorWithSegment.segment },
                 });
-
-                // Filtrar apenas os que não têm vínculo com nenhuma linha
-                for (const operator of allOnlineOperators) {
-                  const hasLine = await this.prisma.lineOperator.findFirst({
-                    where: { userId: operator.id },
-                  });
-                  if (!hasLine && operator.segment) {
-                    operatorWithoutLine = operator;
-                    break; // Pegar o primeiro disponível com segmento
-                  }
-                }
-
-                // Se encontrou operador, atualizar segmento da linha para o do operador
-                if (operatorWithoutLine && operatorWithoutLine.segment) {
-                  await this.prisma.linesStock.update({
-                    where: { id: line.id },
-                    data: { segment: operatorWithoutLine.segment },
-                  });
-                  console.log(`🔄 [Webhook] Linha padrão ${line.phone} atualizada para o segmento ${operatorWithoutLine.segment} do operador ${operatorWithoutLine.name}`);
-                }
-              } else {
-                // Linha normal: buscar operador do mesmo segmento
-                const allOnlineOperators = await this.prisma.user.findMany({
-                  where: {
-                    role: 'operator',
-                    status: 'Online',
-                    segment: line.segment,
-                  },
-                });
-
-                // Filtrar apenas os que não têm vínculo com nenhuma linha
-                for (const operator of allOnlineOperators) {
-                  const hasLine = await this.prisma.lineOperator.findFirst({
-                    where: { userId: operator.id },
-                  });
-                  if (!hasLine) {
-                    operatorWithoutLine = operator;
-                    break; // Pegar o primeiro disponível
-                  }
-                }
+                console.log(`🔄 [Webhook] Linha padrão ${line.phone} atualizada para o segmento ${operatorWithSegment.segment} do operador ${operatorWithSegment.name}`);
               }
-
-              if (operatorWithoutLine) {
-                // Vincular operador à linha usando método com transaction + lock
-                try {
-                  await this.linesService.assignOperatorToLine(line.id, operatorWithoutLine.id);
-
-                  console.log(`✅ [Webhook] Linha ${line.phone} vinculada automaticamente ao operador ${operatorWithoutLine.name} (segmento ${line.segment || 'sem segmento'})`);
-                  
-                  // Notificar via WebSocket
-                  this.websocketGateway.emitToUser(operatorWithoutLine.id, 'line-assigned', {
-                    lineId: line.id,
-                    linePhone: line.phone,
-                    message: `Você foi vinculado à linha ${line.phone} automaticamente.`,
-                  });
-                } catch (error) {
-                  console.error(`❌ [Webhook] Erro ao vincular linha ${line.id} ao operador ${operatorWithoutLine.id}:`, error.message);
-                }
-              } else {
-                console.log(`ℹ️ [Webhook] Linha ${line.phone} conectada, mas nenhum operador online sem linha encontrado${isDefaultLine ? '' : ` no segmento ${line.segment || 'sem segmento'}`}`);
-              }
-            } else {
-              console.log(`ℹ️ [Webhook] Linha ${line.phone} já possui 2 operadores vinculados`);
             }
+
+            console.log(`✅ [Webhook] Linha ${line.phone} conectada e pronta para uso no segmento ${line.segment || 'sem segmento'}`);
           }
+
 
           return { status: 'line_connected', lineId: line?.id };
         }
@@ -475,7 +417,7 @@ export class WebhooksService {
     for (const type of mediaTypes) {
       if (message?.[type]) {
         const mediaMsg = message[type];
-        
+
         console.log(`🔍 [Webhook] Verificando ${type}:`, {
           hasBase64: !!mediaMsg.base64,
           hasMedia: !!mediaMsg.media,
@@ -483,7 +425,7 @@ export class WebhooksService {
           mimetype: mediaMsg.mimetype,
           keys: Object.keys(mediaMsg),
         });
-        
+
         // A Evolution API pode enviar base64 em diferentes formatos
         // Formato 1: { base64: "...", mimetype: "..." }
         if (mediaMsg.base64) {
@@ -533,13 +475,13 @@ export class WebhooksService {
     try {
       // Remover prefixo data:xxx;base64, se existir
       const base64Clean = base64Data.replace(/^data:[^;]+;base64,/, '');
-      
+
       const buffer = Buffer.from(base64Clean, 'base64');
       const filePath = path.join(this.uploadsDir, fileName);
-      
+
       await fs.mkdir(this.uploadsDir, { recursive: true });
       await fs.writeFile(filePath, buffer);
-      
+
       console.log(`📁 Arquivo Base64 salvo: ${fileName} (${buffer.length} bytes)`);
       return fileName;
     } catch (error) {
