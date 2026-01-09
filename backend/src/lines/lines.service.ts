@@ -394,6 +394,50 @@ export class LinesService {
     });
   }
 
+  async getActivatorsProductivity() {
+    const productivity = await (this.prisma as any).linesStock.groupBy({
+      by: ['createdBy'],
+      _count: {
+        id: true,
+      },
+      where: {
+        createdBy: { not: null },
+      },
+    });
+
+    // Buscar nomes dos usuários
+    const userIds = productivity.map(p => p.createdBy);
+    const users = await (this.prisma as any).user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true },
+    });
+    const usersMap = new Map(users.map(u => [u.id, u.name]));
+
+    return productivity.map(p => ({
+      activatorId: p.createdBy,
+      activatorName: usersMap.get(p.createdBy) || 'Desconhecido',
+      count: p._count.id,
+    }));
+  }
+
+  async getLinesAllocationStats() {
+    const lines = await (this.prisma as any).linesStock.findMany({
+      include: {
+        operators: true,
+      },
+    });
+
+    const stats = {
+      total: lines.length,
+      active: lines.filter(l => l.lineStatus === 'active').length,
+      banned: lines.filter(l => l.lineStatus === 'ban').length,
+      allocated: lines.filter(l => l.operators.length > 0).length,
+      unallocated: lines.filter(l => l.operators.length === 0).length,
+    };
+
+    return stats;
+  }
+
   /**
    * Distribui mensagem inbound de forma inteligente baseado em:
    * - Tempo logado (mais tempo = prioridade)
