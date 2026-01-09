@@ -82,7 +82,7 @@ export default function Atendimento() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { playMessageSound, playSuccessSound, playErrorSound } = useNotificationSound();
   const { isConnected: isRealtimeConnected } = useRealtimeConnection();
-  
+
   // Estado para edição de contato
   const [isEditContactOpen, setIsEditContactOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -94,14 +94,14 @@ export default function Atendimento() {
   const previousConversationsRef = useRef<ConversationGroup[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
-  
+
   // Estado para filtro de conversas
   type FilterType = 'todas' | 'stand-by' | 'atendimento' | 'finalizadas';
   const [conversationFilter, setConversationFilter] = useState<FilterType>('todas');
-  
+
   // Estado para pesquisa de tabulação
   const [tabulationSearch, setTabulationSearch] = useState("");
-  
+
   // Estado para notificação de linha banida
   const [lineBannedNotification, setLineBannedNotification] = useState<{
     bannedLinePhone: string;
@@ -110,7 +110,7 @@ export default function Atendimento() {
     message: string;
   } | null>(null);
   const [isRecallingContact, setIsRecallingContact] = useState<string | null>(null);
-  
+
   // Estado para controlar visibilidade da sidebar em mobile
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -120,25 +120,25 @@ export default function Atendimento() {
   // Subscribe to new messages in real-time
   useRealtimeSubscription(WS_EVENTS.NEW_MESSAGE, (data: any) => {
     console.log('[Atendimento] New message received:', data);
-    
+
     if (data.message) {
       const newMsg = data.message as APIConversation;
-      
+
       // Play sound for incoming messages
       if (newMsg.sender === 'contact') {
         playMessageSound();
       }
-      
+
       setConversations(prev => {
         const existing = prev.find(c => c.contactPhone === newMsg.contactPhone);
-        
+
         if (existing) {
           // Add message to existing conversation
           const updated = prev.map(conv => {
             if (conv.contactPhone === newMsg.contactPhone) {
               return {
                 ...conv,
-                messages: [...conv.messages, newMsg].sort((a, b) => 
+                messages: [...conv.messages, newMsg].sort((a, b) =>
                   new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
                 ),
                 lastMessage: newMsg.message,
@@ -148,7 +148,7 @@ export default function Atendimento() {
             }
             return conv;
           });
-          return updated.sort((a, b) => 
+          return updated.sort((a, b) =>
             new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
           );
         } else {
@@ -172,7 +172,7 @@ export default function Atendimento() {
           if (!prev) return null;
           return {
             ...prev,
-            messages: [...prev.messages, newMsg].sort((a, b) => 
+            messages: [...prev.messages, newMsg].sort((a, b) =>
               new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
             ),
             lastMessage: newMsg.message,
@@ -190,28 +190,28 @@ export default function Atendimento() {
     if (data?.message) {
       // Adicionar mensagem à conversa ativa
       const newMsg = data.message as APIConversation;
-      
+
       // Mostrar toast de sucesso
       playSuccessSound();
       toast({
         title: "Mensagem enviada",
         description: "Sua mensagem foi enviada com sucesso",
       });
-      
+
       // Se estava criando nova conversa, fechar dialog e limpar campos
       if (isNewConversationOpen) {
         closeNewConversationModal();
       }
-      
+
       setConversations(prev => {
         const existing = prev.find(c => c.contactPhone === newMsg.contactPhone);
-        
+
         if (existing) {
           return prev.map(conv => {
             if (conv.contactPhone === newMsg.contactPhone) {
               return {
                 ...conv,
-                messages: [...conv.messages, newMsg].sort((a, b) => 
+                messages: [...conv.messages, newMsg].sort((a, b) =>
                   new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
                 ),
                 lastMessage: newMsg.message,
@@ -220,7 +220,7 @@ export default function Atendimento() {
               };
             }
             return conv;
-          }).sort((a, b) => 
+          }).sort((a, b) =>
             new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
           );
         } else {
@@ -243,7 +243,7 @@ export default function Atendimento() {
           if (!prev) return null;
           return {
             ...prev,
-            messages: [...prev.messages, newMsg].sort((a, b) => 
+            messages: [...prev.messages, newMsg].sort((a, b) =>
               new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
             ),
             lastMessage: newMsg.message,
@@ -259,7 +259,7 @@ export default function Atendimento() {
     console.log('[Atendimento] Message error received:', data);
     if (data?.error) {
       playErrorSound();
-      
+
       // Determinar título baseado no tipo de erro
       let title = "Mensagem bloqueada";
       if (data.error.includes('CPC')) {
@@ -269,7 +269,7 @@ export default function Atendimento() {
       } else if (data.error.includes('permissão')) {
         title = "Sem permissão";
       }
-      
+
       toast({
         title,
         description: data.error,
@@ -280,8 +280,22 @@ export default function Atendimento() {
   }, [playErrorSound]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      // Tentar encontrar o viewport do ScrollArea para rolar diretamente
+      // Isso evita que o scrollIntoView role a página inteira (window)
+      const viewport = messagesEndRef.current.closest('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior: "smooth"
+        });
+      } else {
+        // Fallback caso o seletor mude ou não seja encontrado
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+      }
+    }
   };
+
 
   // Ref para armazenar o contactPhone selecionado (evita loop infinito)
   const selectedPhoneRef = useRef<string | null>(null);
@@ -298,17 +312,17 @@ export default function Atendimento() {
         conversationsService.getActive(),
         conversationsService.getTabulated().catch(() => []), // Se falhar, retorna array vazio
       ]);
-      
+
       // Combinar todos os dados
       const allData = [...activeData, ...tabulatedData];
-      
+
       // Group conversations by contact phone
       const groupedMap = new Map<string, ConversationGroup>();
-      
+
       allData.forEach((conv) => {
         const existing = groupedMap.get(conv.contactPhone);
         const isTabulated = conv.tabulation !== null && conv.tabulation !== undefined;
-        
+
         if (existing) {
           existing.messages.push(conv);
           // Update last message if this one is more recent
@@ -340,10 +354,10 @@ export default function Atendimento() {
       // Sort messages within each group and groups by last message time
       let groups = Array.from(groupedMap.values()).map(group => ({
         ...group,
-        messages: group.messages.sort((a, b) => 
+        messages: group.messages.sort((a, b) =>
           new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
         ),
-      })).sort((a, b) => 
+      })).sort((a, b) =>
         new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
       );
 
@@ -370,7 +384,7 @@ export default function Atendimento() {
       }
 
       setConversations(groups);
-      
+
       // Update selected conversation if it exists (usando ref para evitar loop)
       const currentSelectedPhone = selectedPhoneRef.current;
       if (currentSelectedPhone) {
@@ -396,7 +410,7 @@ export default function Atendimento() {
         description: data.message || `Nova linha ${data.newLinePhone} foi atribuída automaticamente.`,
         duration: 8000,
       });
-      
+
       // Recarregar conversas para atualizar com a nova linha
       setTimeout(() => {
         loadConversations();
@@ -416,7 +430,7 @@ export default function Atendimento() {
   // Carregar dados do contato para edição
   const openEditContact = useCallback(async () => {
     if (!selectedConversation) return;
-    
+
     try {
       const contact = await contactsService.getByPhone(selectedConversation.contactPhone);
       if (contact) {
@@ -448,7 +462,7 @@ export default function Atendimento() {
   // Salvar alterações do contato
   const handleSaveContact = useCallback(async () => {
     if (!selectedConversation) return;
-    
+
     setIsSavingContact(true);
     try {
       const updateData = {
@@ -480,8 +494,8 @@ export default function Atendimento() {
         } : null);
 
         // Atualizar na lista de conversas
-        setConversations(prev => prev.map(c => 
-          c.contactPhone === selectedConversation.contactPhone 
+        setConversations(prev => prev.map(c =>
+          c.contactPhone === selectedConversation.contactPhone
             ? { ...c, contactName: editContactName.trim() }
             : c
         ));
@@ -736,13 +750,13 @@ export default function Atendimento() {
   // Verificar se pode enviar mensagem livre (não precisa de template)
   const canSendFreeMessage = useCallback((conversation: ConversationGroup | null): boolean => {
     if (!conversation) return false;
-    
+
     // Verificar se há mensagens do operador na conversa
     const hasOperatorMessages = conversation.messages.some(msg => msg.sender === 'operator');
-    
+
     // Verificar se a conversa foi iniciada pelo cliente (primeira mensagem é do cliente)
     const isInbound = conversation.messages.length > 0 && conversation.messages[0]?.sender === 'contact';
-    
+
     // Pode enviar mensagem livre se:
     // 1. Já há mensagens do operador (não é primeira mensagem), OU
     // 2. A conversa foi iniciada pelo cliente (inbound - janela de 24h da Meta)
@@ -784,7 +798,7 @@ export default function Atendimento() {
 
       setMessageText(""); // Limpar campo
       playSuccessSound();
-      
+
       // Recarregar conversas após um pequeno delay para garantir que a mensagem foi processada
       setTimeout(() => {
         loadConversations();
@@ -865,7 +879,7 @@ export default function Atendimento() {
         title: "Conversa tabulada",
         description: "A conversa foi tabulada com sucesso",
       });
-      
+
       // Remove from active conversations
       setConversations(prev => prev.filter(c => c.contactPhone !== selectedConversation.contactPhone));
       setSelectedConversation(null);
@@ -929,21 +943,21 @@ export default function Atendimento() {
       }
 
       await conversationsService.transfer(firstMessage.id, parseInt(selectedOperatorId));
-      
+
       playSuccessSound();
       toast({
         title: "Conversa transferida",
         description: "A conversa foi transferida com sucesso",
       });
-      
+
       // Fechar dialog e limpar seleção
       setIsTransferDialogOpen(false);
       setSelectedOperatorId("");
-      
+
       // Remover conversa da lista atual (ela será atribuída ao novo operador)
       setConversations(prev => prev.filter(c => c.contactPhone !== selectedConversation.contactPhone));
       setSelectedConversation(null);
-      
+
       // Recarregar conversas após um delay
       setTimeout(() => {
         loadConversations();
@@ -1092,7 +1106,7 @@ export default function Atendimento() {
         title: "Conversa criada",
         description: "Template enviado com sucesso",
       });
-      
+
       await loadConversations();
 
       // Fechar dialog e limpar campos
@@ -1213,7 +1227,7 @@ export default function Atendimento() {
     const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const printWindow = window.open(url, '_blank');
-    
+
     if (printWindow) {
       printWindow.onload = () => {
         setTimeout(() => {
@@ -1243,7 +1257,7 @@ export default function Atendimento() {
             <Menu className="h-4 w-4" />
           </Button>
         )}
-        
+
         {/* Mobile: Overlay para fechar sidebar */}
         {isSidebarOpen && !selectedConversation && (
           <div
@@ -1251,7 +1265,7 @@ export default function Atendimento() {
             onClick={() => setIsSidebarOpen(false)}
           />
         )}
-        
+
         {/* Conversations List */}
         <GlassCard className={cn(
           "flex flex-col transition-transform duration-300",
@@ -1264,26 +1278,25 @@ export default function Atendimento() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 {/* Mobile: Botão para fechar sidebar */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="md:hidden h-8 w-8"
-                    onClick={() => {
-                      setSelectedConversation(null);
-                      setIsSidebarOpen(true);
-                    }}
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden h-8 w-8"
+                  onClick={() => {
+                    setSelectedConversation(null);
+                    setIsSidebarOpen(true);
+                  }}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
                 <h2 className="font-semibold text-foreground">Atendimentos</h2>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
-                        isRealtimeConnected 
-                          ? 'bg-success/10 text-success' 
+                      <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${isRealtimeConnected
+                          ? 'bg-success/10 text-success'
                           : 'bg-muted text-muted-foreground'
-                      }`}>
+                        }`}>
                         {isRealtimeConnected ? (
                           <Wifi className="h-3 w-3" />
                         ) : (
@@ -1292,8 +1305,8 @@ export default function Atendimento() {
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
-                      {isRealtimeConnected 
-                        ? 'Conectado em tempo real' 
+                      {isRealtimeConnected
+                        ? 'Conectado em tempo real'
                         : 'WebSocket desconectado - Atualize a página'}
                     </TooltipContent>
                   </Tooltip>
@@ -1324,8 +1337,8 @@ export default function Atendimento() {
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
                       <Label htmlFor="name">Nome *</Label>
-                      <Input 
-                        id="name" 
+                      <Input
+                        id="name"
                         placeholder="Nome do contato"
                         value={newContactName}
                         onChange={(e) => setNewContactName(e.target.value)}
@@ -1333,8 +1346,8 @@ export default function Atendimento() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Telefone *</Label>
-                      <Input 
-                        id="phone" 
+                      <Input
+                        id="phone"
                         placeholder="+55 11 99999-9999"
                         value={newContactPhone}
                         onChange={(e) => setNewContactPhone(e.target.value)}
@@ -1342,8 +1355,8 @@ export default function Atendimento() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="cpf">CPF</Label>
-                      <Input 
-                        id="cpf" 
+                      <Input
+                        id="cpf"
                         placeholder="000.000.000-00"
                         value={newContactCpf}
                         onChange={(e) => setNewContactCpf(e.target.value)}
@@ -1388,8 +1401,8 @@ export default function Atendimento() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="new-template">Template * (apenas templates da linha selecionada)</Label>
-                      <Select 
-                        value={newContactTemplateId} 
+                      <Select
+                        value={newContactTemplateId}
                         onValueChange={setNewContactTemplateId}
                         disabled={isLoadingTemplates}
                       >
@@ -1426,7 +1439,7 @@ export default function Atendimento() {
                 </DialogContent>
               </Dialog>
             </div>
-            
+
             {/* Botões de Filtro */}
             <div className="flex items-center gap-2 flex-wrap">
               <Button
@@ -1601,53 +1614,53 @@ export default function Atendimento() {
                 </div>
                 <div className="flex gap-2">
                   {(user?.role === 'supervisor' || user?.role === 'admin') && (
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => setIsTransferDialogOpen(true)}
                     >
                       Transferir
                     </Button>
                   )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      Tabular
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-64">
-                    <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-                      <div className="relative">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Pesquisar tabulação..."
-                          value={tabulationSearch}
-                          onChange={(e) => setTabulationSearch(e.target.value)}
-                          className="pl-8 h-8"
-                          onClick={(e) => e.stopPropagation()}
-                        />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Tabular
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative">
+                          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Pesquisar tabulação..."
+                            value={tabulationSearch}
+                            onChange={(e) => setTabulationSearch(e.target.value)}
+                            className="pl-8 h-8"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {tabulations
-                        .filter((tab) => 
+                      <div className="max-h-64 overflow-y-auto">
+                        {tabulations
+                          .filter((tab) =>
+                            tab.name.toLowerCase().includes(tabulationSearch.toLowerCase())
+                          )
+                          .map((tab) => (
+                            <DropdownMenuItem key={tab.id} onClick={() => handleTabulate(tab.id)}>
+                              {tab.name}
+                            </DropdownMenuItem>
+                          ))}
+                        {tabulations.filter((tab) =>
                           tab.name.toLowerCase().includes(tabulationSearch.toLowerCase())
-                        )
-                        .map((tab) => (
-                          <DropdownMenuItem key={tab.id} onClick={() => handleTabulate(tab.id)}>
-                            {tab.name}
-                          </DropdownMenuItem>
-                        ))}
-                      {tabulations.filter((tab) => 
-                        tab.name.toLowerCase().includes(tabulationSearch.toLowerCase())
-                      ).length === 0 && (
-                        <DropdownMenuItem disabled>
-                          {tabulationSearch ? 'Nenhuma tabulação encontrada' : 'Nenhuma tabulação disponível'}
-                        </DropdownMenuItem>
-                      )}
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                        ).length === 0 && (
+                            <DropdownMenuItem disabled>
+                              {tabulationSearch ? 'Nenhuma tabulação encontrada' : 'Nenhuma tabulação disponível'}
+                            </DropdownMenuItem>
+                          )}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
@@ -1734,8 +1747,8 @@ export default function Atendimento() {
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
                       <Label htmlFor="operator">Operador *</Label>
-                      <Select 
-                        value={selectedOperatorId} 
+                      <Select
+                        value={selectedOperatorId}
                         onValueChange={setSelectedOperatorId}
                         disabled={isLoadingOperators}
                       >
@@ -1903,9 +1916,9 @@ export default function Atendimento() {
                         }}
                         className="flex-1 resize-none"
                       />
-                      <Button 
-                        size="icon" 
-                        onClick={handleSendMessage} 
+                      <Button
+                        size="icon"
+                        onClick={handleSendMessage}
                         disabled={isSending || !messageText.trim()}
                         className="self-end"
                       >
@@ -1919,8 +1932,8 @@ export default function Atendimento() {
                     <p className="text-xs text-muted-foreground">
                       Você também pode enviar um template usando o seletor abaixo
                     </p>
-                    <Select 
-                      value={selectedTemplateId} 
+                    <Select
+                      value={selectedTemplateId}
                       onValueChange={setSelectedTemplateId}
                       disabled={isSending || isLoadingTemplates}
                     >
@@ -1942,8 +1955,8 @@ export default function Atendimento() {
                       </SelectContent>
                     </Select>
                     {selectedTemplateId && (
-                      <Button 
-                        onClick={handleSendTemplate} 
+                      <Button
+                        onClick={handleSendTemplate}
                         disabled={isSending || !selectedTemplateId || isLoadingTemplates}
                         className="w-full"
                         variant="outline"
@@ -1965,8 +1978,8 @@ export default function Atendimento() {
                 ) : (
                   // Template obrigatório (primeira mensagem outbound)
                   <div className="space-y-2">
-                    <Select 
-                      value={selectedTemplateId} 
+                    <Select
+                      value={selectedTemplateId}
                       onValueChange={setSelectedTemplateId}
                       disabled={isSending || isLoadingTemplates || !selectedConversation}
                     >
@@ -1987,8 +2000,8 @@ export default function Atendimento() {
                         )}
                       </SelectContent>
                     </Select>
-                    <Button 
-                      onClick={handleSendTemplate} 
+                    <Button
+                      onClick={handleSendTemplate}
                       disabled={isSending || !selectedTemplateId || isLoadingTemplates}
                       className="w-full"
                     >
@@ -2033,7 +2046,7 @@ export default function Atendimento() {
               {lineBannedNotification?.message}
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="p-4 bg-muted rounded-lg">
               <p className="text-sm font-medium mb-1">Linha banida:</p>
@@ -2066,7 +2079,7 @@ export default function Atendimento() {
                           size="sm"
                           onClick={async () => {
                             if (isRecallingContact === contact.phone) return;
-                            
+
                             setIsRecallingContact(contact.phone);
                             try {
                               await conversationsService.recallContact(contact.phone);
@@ -2074,10 +2087,10 @@ export default function Atendimento() {
                                 title: "✅ Contato rechamado",
                                 description: `Conversa reiniciada com ${contact.name}`,
                               });
-                              
+
                               // Recarregar conversas
                               await loadConversations();
-                              
+
                               // Selecionar a conversa recém-criada
                               await loadConversations();
                               // Usar setTimeout para garantir que o estado foi atualizado
@@ -2090,7 +2103,7 @@ export default function Atendimento() {
                                   return prev;
                                 });
                               }, 100);
-                              
+
                               // Remover da lista de contatos para rechamar
                               setLineBannedNotification(prev => {
                                 if (!prev) return null;
@@ -2150,7 +2163,7 @@ export default function Atendimento() {
                 onClick={async () => {
                   // Rechamar todos os contatos
                   if (!lineBannedNotification) return;
-                  
+
                   const contacts = [...lineBannedNotification.contactsToRecall];
                   for (const contact of contacts) {
                     try {
@@ -2163,12 +2176,12 @@ export default function Atendimento() {
                       setIsRecallingContact(null);
                     }
                   }
-                  
+
                   toast({
                     title: "✅ Contatos rechamados",
                     description: `${contacts.length} contato(s) rechamado(s) com sucesso`,
                   });
-                  
+
                   await loadConversations();
                   setLineBannedNotification(null);
                 }}
