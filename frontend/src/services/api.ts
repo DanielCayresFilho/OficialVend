@@ -699,25 +699,35 @@ export const tabulationsService = {
       body: JSON.stringify(data),
     });
   },
-
-
   delete: async (id: number): Promise<void> => {
     await apiRequest(`/tabulations/${id}`, { method: 'DELETE' });
   },
 
   uploadCSV: async (file: File): Promise<{ message: string; success: number; errors: string[] }> => {
+    const token = getAuthToken();
     const formData = new FormData();
     formData.append('file', file);
 
-    return apiRequest<{ message: string; success: number; errors: string[] }>('/tabulations/upload-csv', {
+    const response = await fetch(`${API_BASE_URL}/tabulations/upload-csv`, {
       method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
       body: formData,
     });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Erro na requisição' }));
+      throw new Error(error.message || `HTTP error ${response.status}`);
+    }
+
+    return response.json();
   },
 };
 
 // ==================== BLOCKLIST ====================
 export interface BlocklistEntry {
+
   id: number;
   name?: string;
   phone?: string;
