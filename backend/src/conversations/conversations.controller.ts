@@ -18,7 +18,7 @@ export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   @Post()
   @Roles(Role.admin, Role.supervisor, Role.operator)
@@ -52,8 +52,8 @@ export class ConversationsController {
     const daysToFilter = days ? parseInt(days) : 3; // Padrão: 3 dias
     console.log(`📋 [GET /conversations/active] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}, days: ${daysToFilter}`);
 
-    // Digital vê TODAS as conversas ativas sem restrição de domínio
-    if (user.role === Role.digital) {
+    // Admin e Digital veem TODAS as conversas ativas sem restrição de domínio
+    if (user.role === Role.admin || user.role === Role.digital) {
       const where: any = { tabulation: null };
       if (days) {
         const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
@@ -61,20 +61,6 @@ export class ConversationsController {
         where.datetime = { gte: dateLimit };
       }
       return this.conversationsService.findAll(where);
-    }
-
-    // Admin vê apenas conversas de operadores do mesmo domínio de email
-    if (user.role === Role.admin) {
-      const userDomain = getEmailDomain(user.email);
-      const where: any = { tabulation: null };
-      if (days) {
-        const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
-        const dateLimit = new Date(dateLimitMs);
-        where.datetime = { gte: dateLimit };
-      }
-
-      // Buscar apenas conversas de operadores do mesmo domínio
-      return this.conversationsService.findAllByEmailDomain(where, userDomain);
     }
 
     // Supervisor vê apenas conversas do seu segmento e mesmo domínio de email
@@ -103,8 +89,8 @@ export class ConversationsController {
     const daysToFilter = days ? parseInt(days) : 3; // Padrão: 3 dias
     console.log(`📋 [GET /conversations/tabulated] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}, days: ${daysToFilter}`);
 
-    // Digital vê TODAS as conversas tabuladas sem restrição de domínio
-    if (user.role === Role.digital) {
+    // Admin e Digital veem TODAS as conversas tabuladas sem restrição de domínio
+    if (user.role === Role.admin || user.role === Role.digital) {
       const where: any = { tabulation: { not: null } };
       if (days) {
         const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
@@ -112,18 +98,6 @@ export class ConversationsController {
         where.datetime = { gte: dateLimit };
       }
       return this.conversationsService.findAll(where);
-    }
-
-    // Admin vê apenas conversas tabuladas de operadores do mesmo domínio
-    if (user.role === Role.admin) {
-      const userDomain = getEmailDomain(user.email);
-      const where: any = { tabulation: { not: null } };
-      if (days) {
-        const dateLimitMs = Date.now() - (daysToFilter * 24 * 60 * 60 * 1000);
-        const dateLimit = new Date(dateLimitMs);
-        where.datetime = { gte: dateLimit };
-      }
-      return this.conversationsService.findAllByEmailDomain(where, userDomain);
     }
 
     // Supervisor vê apenas conversas tabuladas do seu segmento e mesmo domínio
@@ -207,19 +181,19 @@ export class ConversationsController {
     @CurrentUser() user: any,
   ) {
     console.log(`📞 [POST /conversations/recall/:phone] Operador ${user.name} rechamando contato ${phone}`);
-    
+
     // Buscar linha atual do operador (pode estar na tabela LineOperator ou no campo legacy)
     let userLine = user.line;
-    
+
     // Se não tiver no campo legacy, buscar na tabela LineOperator
     if (!userLine) {
-      const lineOperator = await this.prisma.lineOperator.findFirst({
+      const lineOperator = await (this.prisma as any).lineOperator.findFirst({
         where: { userId: user.id },
         select: { lineId: true },
       });
       userLine = lineOperator?.lineId || null;
     }
-    
+
     return this.conversationsService.recallContact(phone, user.id, userLine);
   }
 

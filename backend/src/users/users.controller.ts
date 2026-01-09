@@ -13,7 +13,7 @@ import { getEmailDomain } from '../common/utils/email-domain.util';
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Post()
   @Roles(Role.admin)
@@ -24,12 +24,12 @@ export class UsersController {
   @Get()
   @Roles(Role.admin, Role.supervisor, Role.digital)
   findAll(@Query() filters: any, @CurrentUser() user: any) {
-    // Digital vê todos os usuários
-    if (user.role === Role.digital) {
+    // Admin e Digital veem todos os usuários
+    if (user.role === Role.admin || user.role === Role.digital) {
       return this.usersService.findAll(filters);
     }
 
-    // Admin e Supervisor veem apenas usuários do mesmo domínio de email
+    // Supervisor vê apenas usuários do mesmo domínio de email
     const userDomain = getEmailDomain(user.email);
     return this.usersService.findAllByEmailDomain(filters, userDomain);
   }
@@ -37,12 +37,12 @@ export class UsersController {
   @Get('online-operators')
   @Roles(Role.admin, Role.supervisor, Role.digital)
   getOnlineOperators(@Query('segment') segment?: string, @CurrentUser() user?: any) {
-    // Digital vê todos
-    if (user?.role === Role.digital) {
+    // Admin e Digital veem todos
+    if (user?.role === Role.admin || user?.role === Role.digital) {
       return this.usersService.getOnlineOperators(segment ? parseInt(segment) : undefined);
     }
 
-    // Admin e Supervisor veem apenas operadores do mesmo domínio
+    // Supervisor vê apenas operadores do mesmo domínio
     const userDomain = getEmailDomain(user.email);
     return this.usersService.getOnlineOperatorsByEmailDomain(
       segment ? parseInt(segment) : undefined,
@@ -67,7 +67,7 @@ export class UsersController {
       oneToOneActive: typeof updateUserDto.oneToOneActive,
       oneToOneActiveValue: updateUserDto.oneToOneActive,
     });
-    
+
     try {
       const result = await this.usersService.update(+id, updateUserDto);
       console.log('✅ Usuário atualizado com sucesso');
